@@ -105,7 +105,7 @@ class RsuHelper:
         for acq in [r for r in self.rsus if r["date"] < sell_date]:
             if acq["available"] == 0:
                 continue
-            sell_from_acq = min(to_sell, acq["count"])
+            sell_from_acq = min(to_sell, acq["available"])
             plan = self.rsu_plans[acq["plan_name"]]
             sell_details.append({
                 "taxation_scheme": plan["taxation_scheme"],
