@@ -108,7 +108,7 @@ class StockHelper:
             self.weighted_average_prices[(acq.plan_name, acq.acq_date)] = weighted_average_price
         return weighted_average_price
 
-    def sell_espp(self, plan_name, nb_stocks, sell_date, sell_price, fees, currency="EUR"):
+    def sell_espp(self, nb_stocks, sell_date, sell_price, fees, currency="EUR"):
         if nb_stocks == 0:
             return
         sell_details = []
@@ -126,7 +126,7 @@ class StockHelper:
                 "acq_price": acq.acq_price, # keep price in original currency here
                 "acq_date": acq.acq_date
             })
-            total_acquisition_price += acq.acq_price * sell_from_acq
+            total_acquisition_price += acq.acq_price_eur * sell_from_acq
             # update the rsu data with new availability (tuples are immutable, so replace with new one)
             self.espp_stocks[i] = acq._replace(available = acq.available - sell_from_acq)
             to_sell -= sell_from_acq
@@ -137,13 +137,13 @@ class StockHelper:
         average_acquisition_price = total_acquisition_price / (nb_stocks-to_sell)
         self.rsu_sales[sell_date.year].append({
             "nb_stocks_sold": nb_stocks-to_sell,
-            "unit_acquisition_price": round(cc.convert(average_acquisition_price, currency, "EUR", date = sell_date),2),
+            "unit_acquisition_price": round(average_acquisition_price,2),
             "sell_date": sell_date,
             "sell_price_eur": sell_price_eur,
             "sell_details": sell_details,
             "selling_fees": round(cc.convert(fees, currency, "EUR", date = sell_date),2)
         })
-        return ((nb_stocks-to_sell), weighted_average_price, sell_details)
+        return ((nb_stocks-to_sell), average_acquisition_price, sell_details)
 
     # TODO differentiate by stock_symbol
     def sell_rsus(self, nb_stocks, sell_date, sell_price, fees, currency="EUR"):

@@ -1,6 +1,7 @@
 import pytest
 from easyfrenchtax import StockHelper
 from datetime import date
+from currency_converter import CurrencyConverter
 
 @pytest.fixture
 def stock_helper_with_plan():
@@ -15,8 +16,13 @@ def stock_helper_with_plan():
     stock_helper.rsu_vesting("CAKE JUN 16", 10, date(2018,12,28), 19)
     stock_helper.rsu_vesting("CAKE JUN 16", 10, date(2019,1,28), 23)
     stock_helper.rsu_vesting("CAKE JUN 16", 10, date(2019,2,28), 24)
-    stock_helper.add_espp(50, date(2019,1,15),22, "USD")
+    stock_helper.add_espp(500, date(2019,1,15),22, "USD")
     return stock_helper
+
+@pytest.fixture
+def convert_fn():
+    cc = CurrencyConverter()
+    return cc.convert
 
 def test_weighted_average_price(stock_helper_with_plan):
     weighted_average_price = stock_helper_with_plan.compute_weighted_average_prices(date(2018, 7, 1))
@@ -57,7 +63,6 @@ def test_acquisition_gain_tax_rebates(stock_helper_with_plan):
     assert taxes["acquisition_gain_rebates_1UZ"] == 1716
     assert taxes["other_taxable_gain_1TT_1UT"] == 0
 
-
 def test_bofip_case():
     # example from https://bofip.impots.gouv.fr/bofip/3619-PGP.html/identifiant=BOI-RPPM-PVBMI-20-10-20-40-20191220#Regle_du_prix_moyen_pondere_10
     stock_helper = StockHelper()
@@ -79,3 +84,17 @@ def test_bofip_case():
     assert weighted_average_price_2 == 105
     assert capital_gain_tax_2["2042C"]["capital_gain_3VG"] == 600
     assert sum([r.available for r in stock_helper.rsus]) == 400
+
+def test_espp_sale(stock_helper_with_plan, convert_fn):
+    sell_price = 28
+    final_count, unit_acquisition_price, sell = stock_helper_with_plan.sell_espp(200,date(2021,8,2), sell_price=sell_price, fees=0, currency="USD")
+    agt = stock_helper_with_plan.compute_acquisition_gain_tax(2021)
+    cgt = stock_helper_with_plan.compute_capital_gain_tax(2021)
+    
+    sell_price_eur = convert_fn(sell_price, "USD", "EUR", date(2021,8,2))
+    assert final_count == 200
+    assert unit_acquisition_price == stock_helper_with_plan.espp_stocks[0].acq_price_eur
+    assert not any(agt.values()), "ESPP should not yield acquisition gain (thus no acquisition gain tax)"
+    assert cgt["2042C"]["capital_gain_3VG"] == round(200*(round(sell_price_eur,2)-round(unit_acquisition_price, 2))), "Capital gain tax should be compliant"
+    
+    
