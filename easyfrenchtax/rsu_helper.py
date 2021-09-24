@@ -1,10 +1,11 @@
 from datetime import date,datetime
 from dateutil.relativedelta import relativedelta
 from currency_converter import CurrencyConverter
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 import csv
 import glob
 
+StockGroup = namedtuple("StockGroup", ['count', 'available', 'acq_price', 'acq_price_eur', 'acq_date', 'plan_name'], defaults = [None, ""])
 
 # currency converter (USD/EUR in particular)
 cc = CurrencyConverter()
@@ -14,6 +15,7 @@ class RsuHelper:
         self.rsu_plans = {}
         self.rsus = []
         self.rsu_sales = defaultdict(list)
+        self.weighted_average_prices = {} # "prix moyen pondéré" in euro ; keyed by a tuple (plan_name, acq_date)
 
 ####### RSU related load functions #######
     def _determine_rsu_plans_type(gdate):
@@ -40,14 +42,14 @@ class RsuHelper:
     def rsu_vesting(self, plan_name, acq_count, acq_date, acq_price, currency = None):
         if not currency:
             currency = self.rsu_plans[plan_name]["price_currency"]
-        self.rsus.append({
-            "plan_name": plan_name,
-            "count": acq_count,
-            "available": acq_count, # new acquisition, so everything available
-            "price": acq_price,
-            "price_eur": cc.convert(acq_price, currency, "EUR", date = acq_date),
-            "date": acq_date
-        })
+        self.rsus.append(StockGroup(
+            count=acq_count,
+            available=acq_count, # new acquisition, so everything available
+            acq_price=acq_price,
+            acq_price_eur=cc.convert(acq_price, currency, "EUR", date = acq_date),
+            acq_date=acq_date,
+            plan_name=plan_name
+        ))
         
     def parse_rsu_tsv(self, tsv_files='personal_data/rsu_*.tsv'):
         # read all files found in tsv_files (glob format)
@@ -69,7 +71,7 @@ class RsuHelper:
                     acq_price = float(row["Acquisition value"])
                     acq_date = datetime.strptime(row["Vesting date"], "%d %b %Y").date()
                     self.rsu_vesting(plan_name, acq_count, acq_date, acq_price, currency)
-        self.rsus.sort(key=lambda a: a["date"])
+        self.rsus.sort(key=lambda a: a.acq_date)
 
 ####### stock selling related load functions #######
     def compute_weighted_average_prices(self, up_to):
@@ -79,15 +81,17 @@ class RsuHelper:
         # When some stocks have already been part of a computation for a previous sell event, we re-use the then computed WAP (aka PMP), and update it.    
         total = 0
         count = 0
-        rsu_up_to_date = [r for r in self.rsus if r["date"] < up_to]
+        rsu_up_to_date = [r for r in self.rsus if r.acq_date < up_to]
         for acq in rsu_up_to_date:
-            price = acq.get("weight_averaged_price", acq["price_eur"]) # get WAP, fallback on price_eur if it's the first time we're computing it
-            acq_count = acq["available"]
+            price = self.weighted_average_prices.get((acq.plan_name, acq.acq_date), acq.acq_price_eur) # get WAP, fallback on acq_price_eur if it's the first time we're computing it
+            acq_count = acq.available
             total += acq_count * price
             count += acq_count
-        weight_averaged_price = total / count
+        weighted_average_price = total / count
         for acq in rsu_up_to_date:
-            acq["weight_averaged_price"] = weight_averaged_price
+            # upsert the newly computed weighted average price
+            self.weighted_average_prices[(acq.plan_name, acq.acq_date)] = weighted_average_price
+        return weighted_average_price
         
     # TODO differentiate by stock_symbol
     def sell_rsus(self, nb_stocks, sell_date, sell_price, fees, currency="EUR"):
@@ -97,40 +101,38 @@ class RsuHelper:
         sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date = sell_date),2) # TODO: generalize the USD
         to_sell = nb_stocks
         # we need to compute weighted average prices of our stocks up to the sell date, for future tax accounting
-        self.compute_weighted_average_prices(up_to = sell_date)
-        # we keep track of weighted average price, there should be only one - this is probably a useless check...
-        wap_prices = set()
+        weighted_average_price = self.compute_weighted_average_prices(up_to = sell_date)
+
         # acquisitions are sorted by date, this is the rule set by the tax office (FIFO, or PEPS="premier entré premier sorti")
         # we only keep stocks acquired *before* the sell date, in case we input a sell event in the middle of acquisitions
-        for acq in [r for r in self.rsus if r["date"] < sell_date]:
-            if acq["available"] == 0:
+        rsu_before_sell_date = [r for r in self.rsus if r.acq_date < sell_date]
+        for i,acq in enumerate(rsu_before_sell_date):
+            if acq.available == 0:
                 continue
-            sell_from_acq = min(to_sell, acq["available"])
-            plan = self.rsu_plans[acq["plan_name"]]
+            sell_from_acq = min(to_sell, acq.available)
+            plan = self.rsu_plans[acq.plan_name]
             sell_details.append({
                 "taxation_scheme": plan["taxation_scheme"],
                 "count": sell_from_acq,
-                "acq_price": acq["price"],
-                "acq_date": acq["date"]
+                "acq_price": acq.acq_price, # keep price in original currency here
+                "acq_date": acq.acq_date
             })
-            wap_prices.add(acq["weight_averaged_price"])
-            acq["available"] -= sell_from_acq
+            # update the rsu data with new availability (tuples are immutable, so replace with new one)
+            self.rsus[i] = acq._replace(available = acq.available - sell_from_acq)
             to_sell -= sell_from_acq
             if to_sell == 0:
                 break
-        assert(len(wap_prices)==1) # sanity check
         if to_sell > 0:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
-        weight_averaged_price = wap_prices.pop()        
         self.rsu_sales[sell_date.year].append({
             "nb_stocks_sold": nb_stocks-to_sell,
-            "weight_averaged_price": round(weight_averaged_price,2),
+            "weighted_average_price": round(weighted_average_price,2),
             "sell_date": sell_date,
             "sell_price_eur": sell_price_eur,
             "sell_details": sell_details,
             "selling_fees": round(cc.convert(fees, currency, "EUR", date = sell_date),2)
         })
-        return ((nb_stocks-to_sell), weight_averaged_price, sell_details)
+        return ((nb_stocks-to_sell), weighted_average_price, sell_details)
 
 ####### tax computation functions #######
     
@@ -168,7 +170,7 @@ class RsuHelper:
                     taxable_gain += gain_eur * 0.5
                     rebates_50p += gain_eur * 0.5
                 else:
-                    raise Exception(f"Unsupported tax scheme: {tax_scheme}")  
+                    raise Exception(f"Unsupported tax scheme: {tax_scheme}")
 
         return {
             "taxable_acquisition_gain_1TZ": round(taxable_gain),
@@ -176,7 +178,7 @@ class RsuHelper:
             "acquisition_gain_50p_rebates_1WZ": round(rebates_50p),
             "other_taxable_gain_1TT_1UT": other_taxable_gain
         }
-    
+
     # the other bible of capital gain tax (aka notice for form 2074):
     # # https://www.impots.gouv.fr/portail/files/formulaires/2074/2021/2074_3442.pdf
     def compute_capital_gain_tax(self, year):
@@ -196,8 +198,8 @@ class RsuHelper:
             sell_event_report["selling_fees_517"] = sale['selling_fees']
             net_selling_proceeds = global_selling_proceeds - sale['selling_fees']
             sell_event_report["net_selling_proceeds_518"] = net_selling_proceeds
-            sell_event_report["unit_acquisition_price_520"] = sale['weight_averaged_price']
-            global_acquisition_cost = round(sale['weight_averaged_price'] * sale['nb_stocks_sold'])
+            sell_event_report["unit_acquisition_price_520"] = sale['weighted_average_price']
+            global_acquisition_cost = round(sale['weighted_average_price'] * sale['nb_stocks_sold'])
             sell_event_report["global_acquisition_cost_521"] = global_acquisition_cost
             sell_event_report["acquisition_fees_522"] = 0 # TODO: check how to report this, if we need to support it
             total_acquisition_cost = global_acquisition_cost + sell_event_report["acquisition_fees_522"]
@@ -240,5 +242,3 @@ class RsuHelper:
             print("-----------")
         print(f" * 903: {capital_gain}")
         print(f" * 913: {capital_gain}")
-
-        

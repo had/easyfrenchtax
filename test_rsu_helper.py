@@ -17,28 +17,31 @@ def rsu_helper_with_plan():
     rsu_helper.rsu_vesting("CAKE JUN 16", 10, date(2019,2,28), 24)
     return rsu_helper
 
-
 def test_weighted_average_price(rsu_helper_with_plan):
-    rsu_helper_with_plan.compute_weighted_average_prices(date(2018, 7, 1))
-    assert rsu_helper_with_plan.rsus[0]["price_eur"] == rsu_helper_with_plan.rsus[0]["weight_averaged_price"], "weighted average price is computed on 1st element only, should be equal"
-    assert all(["weight_averaged_price" not in r for r in rsu_helper_with_plan.rsus[1:]]), "weighted average price should NOT be computed for the next elements"
+    weighted_average_price = rsu_helper_with_plan.compute_weighted_average_prices(date(2018, 7, 1))
+    rsu_under_test = rsu_helper_with_plan.rsus[0]
+    assert rsu_under_test.acq_price_eur == rsu_helper_with_plan.weighted_average_prices[(rsu_under_test.plan_name, rsu_under_test.acq_date)], "weighted average price is computed on 1st element only, should be equal to original price"
+    assert weighted_average_price == rsu_under_test.acq_price_eur, "returned value should also match the original price"
+    assert len(rsu_helper_with_plan.weighted_average_prices) == 1, "weighted average price should NOT be computed for the next elements"
 
 def test_selling_rsus(rsu_helper_with_plan):
-    assert sum([r["available"] for r in rsu_helper_with_plan.rsus]) == 320
+    assert sum([r.available for r in rsu_helper_with_plan.rsus]) == 320
     final_count_1, _, _ = rsu_helper_with_plan.sell_rsus(200, date(2019,6,3), sell_price=22, fees=0, currency="USD")
     assert final_count_1 == 200
-    assert rsu_helper_with_plan.rsus[0]["available"] == 40
-    assert all([r["available"] == 10 for r in rsu_helper_with_plan.rsus[1:]])
+    assert rsu_helper_with_plan.rsus[0].available == 40
+    assert all([r.available == 10 for r in rsu_helper_with_plan.rsus[1:]])
     final_count_2, _, _ = rsu_helper_with_plan.sell_rsus(200, date(2019,6,3), sell_price=22, fees=0, currency="USD")
     assert final_count_2 == 120, "Cannot sell more than we have"
     
 def test_selling_too_many_rsus(rsu_helper_with_plan):
-    assert sum([r["available"] for r in rsu_helper_with_plan.rsus]) == 320
+    assert sum([r.available for r in rsu_helper_with_plan.rsus]) == 320
     final_count, _, _ = rsu_helper_with_plan.sell_rsus(400, date(2019,6,3), sell_price=22, fees=0, currency="USD")
     assert final_count == 320, "Cannot sell more than we have"
     
 def test_acquisition_gain_tax(rsu_helper_with_plan):
     final_count, weighted_average_price, sell = rsu_helper_with_plan.sell_rsus(200,date(2019,1,16), sell_price=22, fees=0, currency="USD")
+#     final_count, weighted_average_price, sell = rsu_helper_with_plan.sell_rsus(200,date(2018,7,2), sell_price=22, fees=0, currency="USD")
+    print(sell)
     taxes = rsu_helper_with_plan.compute_acquisition_gain_tax(2019)    
     assert taxes["taxable_acquisition_gain_1TZ"] == 3431
     assert taxes["acquisition_gain_50p_rebates_1WZ"] == 0
@@ -67,12 +70,12 @@ def test_bofip_case():
     capital_gain_tax_1 = rsu_helper.compute_capital_gain_tax(year_N + 7)
     assert weighted_average_price_1 == 103
     assert capital_gain_tax_1["2042C"]["capital_gain_3VG"] == 1050
-    assert sum([r["available"] for r in rsu_helper.rsus]) == 250
+    assert sum([r.available for r in rsu_helper.rsus]) == 250
     rsu_helper.rsu_vesting("Test", 50, date(year_N + 8,9,1), 100)
     rsu_helper.rsu_vesting("Test", 300, date(year_N + 8,11,1), 107.50)
     _, weighted_average_price_2, _ = rsu_helper.sell_rsus(200, date(year_N + 9,1,1), 108, 0)
     capital_gain_tax_2 = rsu_helper.compute_capital_gain_tax(year_N + 9)
     assert weighted_average_price_2 == 105
     assert capital_gain_tax_2["2042C"]["capital_gain_3VG"] == 600
-    assert sum([r["available"] for r in rsu_helper.rsus]) == 400
+    assert sum([r.available for r in rsu_helper.rsus]) == 400
     
