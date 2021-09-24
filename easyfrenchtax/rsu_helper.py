@@ -225,7 +225,7 @@ class StockHelper:
                     taxable_gain += gain_eur * 0.5
                     rebates_50p += gain_eur * 0.5
                 else:
-                    raise Exception(f"Unsupported tax scheme: {tax_scheme}")
+                    raise Exception(f"Unsupported tax scheme: {taxation_scheme}")
 
         return {
             "taxable_acquisition_gain_1TZ": round(taxable_gain),
