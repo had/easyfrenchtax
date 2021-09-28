@@ -9,14 +9,14 @@ StockGroup = namedtuple("StockGroup", ['count', 'available', 'acq_price', 'acq_p
 RsuPlan = namedtuple("RsuPlan", ["name", "grant_date", "taxation_scheme", "stock_symbol", "currency"])
 
 # currency converter (USD/EUR in particular)
-cc = CurrencyConverter()
+cc = CurrencyConverter(fallback_on_wrong_date=True)
 
 class StockHelper:
     def __init__(self):
         self.rsu_plans = {}
-        self.rsus = []
-        self.espp_stocks = []
-        self.rsu_sales = defaultdict(list)
+        self.rsus = defaultdict(list)
+        self.espp_stocks = defaultdict(list)
+        self.stock_sales = defaultdict(list)
         self.weighted_average_prices = {} # "prix moyen pondéré" in euro ; keyed by a tuple (plan_name, acq_date)
 
 ####### RSU related load functions #######
@@ -42,10 +42,10 @@ class StockHelper:
                 currency=currency
             )
 
-    def rsu_vesting(self, plan_name, acq_count, acq_date, acq_price, currency = None):
+    def rsu_vesting(self, symbol, plan_name, acq_count, acq_date, acq_price, currency = None):
         if not currency:
             currency = self.rsu_plans[plan_name].currency
-        self.rsus.append(StockGroup(
+        self.rsus[symbol].append(StockGroup(
             count=acq_count,
             available=acq_count, # new acquisition, so everything available
             acq_price=acq_price,
@@ -53,10 +53,10 @@ class StockHelper:
             acq_date=acq_date,
             plan_name=plan_name
         ))
-        self.rsus.sort(key=lambda a: a.acq_date)
+        self.rsus[symbol].sort(key=lambda a: a.acq_date)
 
-    def add_espp(self, count, acq_date, acq_price, currency):
-        self.espp_stocks.append(StockGroup(
+    def add_espp(self, symbol, count, acq_date, acq_price, currency):
+        self.espp_stocks[symbol].append(StockGroup(
             count=count,
             available=count, # new acquisition, so everything available
             acq_price=acq_price,
@@ -64,7 +64,7 @@ class StockHelper:
             acq_date=acq_date,
             plan_name="espp"
         ))
-        self.espp_stocks.sort(key=lambda a: a.acq_date)
+        self.espp_stocks[symbol].sort(key=lambda a: a.acq_date)
 
     def parse_rsu_tsv(self, tsv_files='personal_data/rsu_*.tsv'):
         # read all files found in tsv_files (glob format)
@@ -89,14 +89,14 @@ class StockHelper:
 
 
 ####### stock selling related load functions #######
-    def compute_weighted_average_prices(self, up_to):
+    def compute_weighted_average_prices(self, symbol, up_to):
         # There are complex rules of computing weighted average price (WAP, or PMP in French), see:
         # https://bofip.impots.gouv.fr/bofip/3619-PGP.html/identifiant=BOI-RPPM-PVBMI-20-10-20-40-20191220#Regle_du_prix_moyen_pondere_10
         # Basically, we need to compute a weighted average of all *available* stock, up to the provided date (sell date).
         # When some stocks have already been part of a computation for a previous sell event, we re-use the then computed WAP (aka PMP), and update it.
         total = 0
         count = 0
-        rsu_up_to_date = [r for r in self.rsus if r.acq_date < up_to]
+        rsu_up_to_date = [r for r in self.rsus[symbol] if r.acq_date < up_to]
         for acq in rsu_up_to_date:
             price = self.weighted_average_prices.get((acq.plan_name, acq.acq_date), acq.acq_price_eur) # get WAP, fallback on acq_price_eur if it's the first time we're computing it
             acq_count = acq.available
@@ -108,13 +108,13 @@ class StockHelper:
             self.weighted_average_prices[(acq.plan_name, acq.acq_date)] = weighted_average_price
         return weighted_average_price
 
-    def sell_espp(self, nb_stocks, sell_date, sell_price, fees, currency="EUR"):
+    def sell_espp(self, symbol, nb_stocks, sell_date, sell_price, fees, currency="EUR"):
         if nb_stocks == 0:
             return
         sell_details = []
         sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date = sell_date),2)
         to_sell = nb_stocks
-        stocks_before_sell_date = [r for r in self.espp_stocks if r.acq_date < sell_date]
+        stocks_before_sell_date = [r for r in self.espp_stocks[symbol] if r.acq_date < sell_date]
         total_acquisition_price = 0
         for i,acq in enumerate(stocks_before_sell_date):
             if acq.available == 0:
@@ -128,14 +128,15 @@ class StockHelper:
             })
             total_acquisition_price += acq.acq_price_eur * sell_from_acq
             # update the rsu data with new availability (tuples are immutable, so replace with new one)
-            self.espp_stocks[i] = acq._replace(available = acq.available - sell_from_acq)
+            self.espp_stocks[symbol][i] = acq._replace(available = acq.available - sell_from_acq)
             to_sell -= sell_from_acq
             if to_sell == 0:
                 break
         if to_sell > 0:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
         average_acquisition_price = total_acquisition_price / (nb_stocks-to_sell)
-        self.rsu_sales[sell_date.year].append({
+        self.stock_sales[sell_date.year].append({
+            "symbol": symbol,
             "nb_stocks_sold": nb_stocks-to_sell,
             "unit_acquisition_price": round(average_acquisition_price,2),
             "sell_date": sell_date,
@@ -146,18 +147,18 @@ class StockHelper:
         return ((nb_stocks-to_sell), average_acquisition_price, sell_details)
 
     # TODO differentiate by stock_symbol
-    def sell_rsus(self, nb_stocks, sell_date, sell_price, fees, currency="EUR"):
+    def sell_rsus(self, symbol, nb_stocks, sell_date, sell_price, fees, currency="EUR"):
         if nb_stocks == 0:
             return
         sell_details = []
         sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date = sell_date),2)
         to_sell = nb_stocks
         # we need to compute weighted average prices of our stocks up to the sell date, for future tax accounting
-        weighted_average_price = self.compute_weighted_average_prices(up_to = sell_date)
+        weighted_average_price = self.compute_weighted_average_prices(symbol, up_to = sell_date)
 
         # acquisitions are sorted by date, this is the rule set by the tax office (FIFO, or PEPS="premier entré premier sorti")
         # we only keep stocks acquired *before* the sell date, in case we input a sell event in the middle of acquisitions
-        rsu_before_sell_date = [r for r in self.rsus if r.acq_date < sell_date]
+        rsu_before_sell_date = [r for r in self.rsus[symbol] if r.acq_date < sell_date]
         for i,acq in enumerate(rsu_before_sell_date):
             if acq.available == 0:
                 continue
@@ -169,13 +170,14 @@ class StockHelper:
                 "acq_date": acq.acq_date
             })
             # update the rsu data with new availability (tuples are immutable, so replace with new one)
-            self.rsus[i] = acq._replace(available = acq.available - sell_from_acq)
+            self.rsus[symbol][i] = acq._replace(available = acq.available - sell_from_acq)
             to_sell -= sell_from_acq
             if to_sell == 0:
                 break
         if to_sell > 0:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
-        self.rsu_sales[sell_date.year].append({
+        self.stock_sales[sell_date.year].append({
+            "symbol": symbol,
             "nb_stocks_sold": nb_stocks-to_sell,
             "unit_acquisition_price": round(weighted_average_price,2),
             "sell_date": sell_date,
@@ -190,7 +192,7 @@ class StockHelper:
     # the bible of acquisition and capital gain tax (version 2021):
     # https://www.impots.gouv.fr/portail/www2/fichiers/documentation/brochure/ir_2021/pdf_som/09-plus_values_141a158.pdf
     def compute_acquisition_gain_tax(self, year):
-        sell_events = self.rsu_sales[year]
+        sell_events = self.stock_sales[year]
         taxable_gain = 0       # this would contribute to box 1TZ
         rebates = 0            # this would contribute to box 1UZ
         rebates_50p = 0        # this would contribute to box 1WZ
@@ -241,7 +243,7 @@ class StockHelper:
             "2074": [],
             "2042C": {}
         }
-        sell_events = self.rsu_sales[year]
+        sell_events = self.stock_sales[year]
         total_capital_gain = 0
         for sale in sell_events:
             sell_event_report = {}
