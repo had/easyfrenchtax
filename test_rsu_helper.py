@@ -25,6 +25,16 @@ def convert_fn():
     cc = CurrencyConverter(fallback_on_wrong_date=True)
     return cc.convert
 
+def test_summary(stock_helper_with_plan):
+    summary = stock_helper_with_plan.get_summary()
+    assert set(summary.keys()) == {"CAKE", "BUD", "PZZA"}
+    assert set(summary["CAKE"].keys()) == {"RSU JUN 16"}
+    assert summary["CAKE"]["RSU JUN 16"] == 320
+    assert set(summary["BUD"].keys()) == {"espp"}
+    assert summary["BUD"]["espp"] == 500
+    assert set(summary["PZZA"].keys()) == {"SO"}
+    assert summary["PZZA"]["SO"] == 150
+
 def test_weighted_average_price(stock_helper_with_plan):
     weighted_average_price = stock_helper_with_plan.compute_weighted_average_prices("CAKE", date(2018, 7, 1))
     rsu_under_test = stock_helper_with_plan.rsus["CAKE"][0]

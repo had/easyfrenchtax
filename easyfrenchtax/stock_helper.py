@@ -22,6 +22,19 @@ class StockHelper:
         self.stock_sales = defaultdict(list)
         self.weighted_average_prices = {} # "prix moyen pondéré" in euro ; keyed by a tuple (plan_name, acq_date)
 
+    def get_summary(self):
+        summary = defaultdict(lambda : defaultdict(int))
+        for symbol, rsus in self.rsus.items():
+            for rsu in rsus:
+                summary[symbol][rsu.plan_name] += rsu.count
+        for symbol, espps in self.espp_stocks.items():
+            for espp in espps:
+                summary[symbol][espp.plan_name] += espp.count
+        for symbol, stockoptions in self.stock_options.items():
+            for stockoption in stockoptions:
+                summary[symbol][stockoption.plan_name] += stockoption.count
+        return summary
+        
 ####### RSU related load functions #######
     def _determine_rsu_plans_type(grant_date):
         if grant_date <= date(2012,9,27):
