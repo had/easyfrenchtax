@@ -22,7 +22,7 @@ class StockHelper:
         self.stock_sales = defaultdict(list)
         self.weighted_average_prices = {} # "prix moyen pondéré" in euro ; keyed by a tuple (plan_name, acq_date)
 
-    def get_summary(self):
+    def summary(self):
         summary = defaultdict(lambda : defaultdict(int))
         for symbol, rsus in self.rsus.items():
             for rsu in rsus:
@@ -92,8 +92,14 @@ class StockHelper:
             plan_name=plan_name
         ))
         self.stock_options[symbol].sort(key=lambda a: a.acq_date)
-
-    def parse_rsu_tsv(self, tsv_files='personal_data/rsu_*.tsv'):
+                    
+    def parse_tsv_info(self, tsv_files='personal_data/*.tsv'):
+        def parse_date(some_date):
+            try:
+                return datetime.strptime(some_date,  "%d %b %Y").date()
+            except ValueError:
+                return datetime.strptime(some_date, "%Y-%m-%d").date()
+            
         # read all files found in tsv_files (glob format)
         rsu_data = []
         for tsv_name in glob.glob(tsv_files):
@@ -101,19 +107,22 @@ class StockHelper:
             with open(tsv_name) as tsv_file:
                 tsv_data = csv.DictReader(tsv_file, delimiter="\t")
                 for row in tsv_data:
-                    plan_name = row["Plan name"]
-                    if plan_name in self.rsu_plans:
-                        currency = self.rsu_plans[plan_name].currency
-                    else:
-                        plan_date = datetime.strptime(row["Plan date"], "%d %b %Y").date()
-                        symbol = row["Stock"]
-                        currency = row["Currency"]
-                        self.rsu_plan(plan_name, plan_date, symbol, currency)
-                    acq_count = int(row["Count"].replace('\u202f', ''))
-                    acq_price = float(row["Acquisition value"])
-                    acq_date = datetime.strptime(row["Vesting date"], "%d %b %Y").date()
-                    self.rsu_vesting(plan_name, acq_count, acq_date, acq_price, currency)
-
+                    plan_name = row["Plan name"] 
+                    stock_type = row["Stock type"]
+                    currency = row["Currency"]
+                    symbol = row["Symbol"]
+                    acq_count = int(float(row["Count"].replace('\u202f', '')))
+                    acq_price = float(row["Acquisition price"])
+                    acq_date = parse_date(row["Acquisition date"])
+                    if stock_type == "RSU":
+                        if plan_name not in self.rsu_plans:
+                            plan_date = parse_date(row["Plan date"])
+                            self.rsu_plan(plan_name, plan_date, symbol, currency)
+                        self.rsu_vesting(symbol, plan_name, acq_count, acq_date, acq_price, currency)
+                    elif stock_type == "ESPP":
+                        self.add_espp(symbol, acq_count, acq_date, acq_price, currency)
+                    elif stock_type == "StockOption":
+                        self.add_stockoptions(symbol, plan_name, acq_count, acq_date, acq_price, currency)
 
 ####### stock selling related load functions #######
     def compute_weighted_average_prices(self, symbol, up_to):

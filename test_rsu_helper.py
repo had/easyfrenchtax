@@ -26,7 +26,7 @@ def convert_fn():
     return cc.convert
 
 def test_summary(stock_helper_with_plan):
-    summary = stock_helper_with_plan.get_summary()
+    summary = stock_helper_with_plan.summary()
     assert set(summary.keys()) == {"CAKE", "BUD", "PZZA"}
     assert set(summary["CAKE"].keys()) == {"RSU JUN 16"}
     assert summary["CAKE"]["RSU JUN 16"] == 320
