@@ -16,12 +16,13 @@ def stock_helper_with_plan():
     stock_helper.rsu_vesting("CAKE", "RSU JUN 16", 10, date(2018,12,28), 19)
     stock_helper.rsu_vesting("CAKE", "RSU JUN 16", 10, date(2019,1,28), 23)
     stock_helper.rsu_vesting("CAKE", "RSU JUN 16", 10, date(2019,2,28), 24)
-    stock_helper.add_espp("CAKE", 500, date(2019,1,15),22, "USD")
+    stock_helper.add_espp("BUD", 500, date(2019,1,15),22, "USD")
+    stock_helper.add_stockoptions("PZZA", "SO", 150, date(2018,1,15), 5, "USD")
     return stock_helper
 
 @pytest.fixture
 def convert_fn():
-    cc = CurrencyConverter()
+    cc = CurrencyConverter(fallback_on_wrong_date=True)
     return cc.convert
 
 def test_weighted_average_price(stock_helper_with_plan):
@@ -86,14 +87,25 @@ def test_bofip_case():
 
 def test_espp_sale(stock_helper_with_plan, convert_fn):
     sell_price = 28
-    final_count, unit_acquisition_price, sell = stock_helper_with_plan.sell_espp("CAKE", 200, date(2021,8,2), sell_price=sell_price, fees=0, currency="USD")
+    final_count, unit_acquisition_price, sell = stock_helper_with_plan.sell_espp("BUD", 200, date(2021,8,2), sell_price=sell_price, fees=0, currency="USD")
     agt = stock_helper_with_plan.compute_acquisition_gain_tax(2021)
     cgt = stock_helper_with_plan.compute_capital_gain_tax(2021)
     
     sell_price_eur = convert_fn(sell_price, "USD", "EUR", date(2021,8,2))
     assert final_count == 200
-    assert unit_acquisition_price == stock_helper_with_plan.espp_stocks["CAKE"][0].acq_price_eur
+    assert unit_acquisition_price == stock_helper_with_plan.espp_stocks["BUD"][0].acq_price_eur
     assert not any(agt.values()), "ESPP should not yield acquisition gain (thus no acquisition gain tax)"
     assert cgt["2042C"]["capital_gain_3VG"] == round(200*(round(sell_price_eur,2)-round(unit_acquisition_price, 2))), "Capital gain tax should be compliant"
     
-    
+def test_stockoptions_sale(stock_helper_with_plan, convert_fn):
+    sell_price = 40
+    final_count, _, sell = stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021,8,2), sell_price=sell_price, fees=0, currency="USD")
+    agt = stock_helper_with_plan.compute_acquisition_gain_tax(2021)
+    cgt = stock_helper_with_plan.compute_capital_gain_tax(2021)
+
+    strike_price = stock_helper_with_plan.stock_options["PZZA"][0].acq_price
+    print(stock_helper_with_plan.stock_sales)
+    assert final_count == 50
+    assert agt["other_taxable_gain_1TT_1UT"] == round(convert_fn(50*(sell_price-strike_price), "USD", "EUR", date(2021,8,2))) , "Exercise gain tax should be compliant"
+    assert not any(cgt["2042C"].values()), "Stock options 'exercise and sell' should not yield capital gain (thus no capital gain tax)"
+    assert len(cgt["2074"]) == 0, "Stock options 'exercise and sell' should not yield capital gain (thus no capital gain tax)"

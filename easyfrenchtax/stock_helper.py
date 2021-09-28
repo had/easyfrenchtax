@@ -7,6 +7,8 @@ import glob
 
 StockGroup = namedtuple("StockGroup", ['count', 'available', 'acq_price', 'acq_price_eur', 'acq_date', 'plan_name'], defaults = [None, ""])
 RsuPlan = namedtuple("RsuPlan", ["name", "grant_date", "taxation_scheme", "stock_symbol", "currency"])
+SaleEvent = namedtuple("SaleEvent", ["symbol", "stock_type", "nb_stocks_sold", "unit_acquisition_price", "sell_date", "sell_price_eur", "sell_details", "selling_fees"])
+
 
 # currency converter (USD/EUR in particular)
 cc = CurrencyConverter(fallback_on_wrong_date=True)
@@ -16,6 +18,7 @@ class StockHelper:
         self.rsu_plans = {}
         self.rsus = defaultdict(list)
         self.espp_stocks = defaultdict(list)
+        self.stock_options = defaultdict(list)
         self.stock_sales = defaultdict(list)
         self.weighted_average_prices = {} # "prix moyen pondéré" in euro ; keyed by a tuple (plan_name, acq_date)
 
@@ -42,12 +45,12 @@ class StockHelper:
                 currency=currency
             )
 
-    def rsu_vesting(self, symbol, plan_name, acq_count, acq_date, acq_price, currency = None):
+    def rsu_vesting(self, symbol, plan_name, count, acq_date, acq_price, currency = None):
         if not currency:
             currency = self.rsu_plans[plan_name].currency
         self.rsus[symbol].append(StockGroup(
-            count=acq_count,
-            available=acq_count, # new acquisition, so everything available
+            count=count,
+            available=count, # new acquisition, so everything available
             acq_price=acq_price,
             acq_price_eur=cc.convert(acq_price, currency, "EUR", date = acq_date),
             acq_date=acq_date,
@@ -65,6 +68,17 @@ class StockHelper:
             plan_name="espp"
         ))
         self.espp_stocks[symbol].sort(key=lambda a: a.acq_date)
+
+    def add_stockoptions(self, symbol, plan_name, count, vesting_date, strike_price, currency):
+        self.stock_options[symbol].append(StockGroup(
+            count=count,
+            available=count, # new acquisition, so everything available
+            acq_price=strike_price if currency != "EUR" else None,    # only set one of the two acquisition prices...
+            acq_price_eur=strike_price if currency == "EUR" else None, # ...if conversion is needed, it will happen at sale time
+            acq_date=vesting_date,
+            plan_name=plan_name
+        ))
+        self.stock_options[symbol].sort(key=lambda a: a.acq_date)
 
     def parse_rsu_tsv(self, tsv_files='personal_data/rsu_*.tsv'):
         # read all files found in tsv_files (glob format)
@@ -108,6 +122,43 @@ class StockHelper:
             self.weighted_average_prices[(acq.plan_name, acq.acq_date)] = weighted_average_price
         return weighted_average_price
 
+    def sell_stockoptions(self, symbol, nb_stocks, sell_date, sell_price, fees, currency="EUR"):
+        if nb_stocks == 0:
+            return
+        sell_details = []
+        sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date = sell_date),2)
+        to_sell = nb_stocks
+        stocks_before_sell_date = [r for r in self.stock_options[symbol] if r.acq_date < sell_date]
+        for i,acq in enumerate(stocks_before_sell_date):
+            if acq.available == 0:
+                continue
+            sell_from_acq = min(to_sell, acq.available)
+            strike_price_eur = acq.acq_price_eur if acq.acq_price_eur else cc.convert(acq.acq_price, currency, "EUR", date = sell_date)
+            sell_details.append({
+                "plan_name": acq.plan_name,
+                "count": sell_from_acq,
+                "strike_price_eur": strike_price_eur,
+                "acq_date": acq.acq_date
+            })
+            # update the rsu data with new availability (tuples are immutable, so replace with new one)
+            self.stock_options[symbol][i] = acq._replace(available = acq.available - sell_from_acq)
+            to_sell -= sell_from_acq
+            if to_sell == 0:
+                break
+        if to_sell > 0:
+            print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
+        self.stock_sales[sell_date.year].append(SaleEvent(
+            symbol= symbol,
+            stock_type="stockoption",
+            nb_stocks_sold=nb_stocks-to_sell,
+            unit_acquisition_price=None, # not applicable for stock options when doing "exercise and sell"
+            sell_date=sell_date,
+            sell_price_eur=sell_price_eur,
+            sell_details=sell_details,
+            selling_fees=round(cc.convert(fees, currency, "EUR", date = sell_date),2)
+        ))
+        return ((nb_stocks-to_sell), None, sell_details)
+    
     def sell_espp(self, symbol, nb_stocks, sell_date, sell_price, fees, currency="EUR"):
         if nb_stocks == 0:
             return
@@ -135,15 +186,16 @@ class StockHelper:
         if to_sell > 0:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
         average_acquisition_price = total_acquisition_price / (nb_stocks-to_sell)
-        self.stock_sales[sell_date.year].append({
-            "symbol": symbol,
-            "nb_stocks_sold": nb_stocks-to_sell,
-            "unit_acquisition_price": round(average_acquisition_price,2),
-            "sell_date": sell_date,
-            "sell_price_eur": sell_price_eur,
-            "sell_details": sell_details,
-            "selling_fees": round(cc.convert(fees, currency, "EUR", date = sell_date),2)
-        })
+        self.stock_sales[sell_date.year].append(SaleEvent(
+            symbol= symbol,
+            stock_type="espp",
+            nb_stocks_sold=nb_stocks-to_sell,
+            unit_acquisition_price=round(average_acquisition_price,2),
+            sell_date=sell_date,
+            sell_price_eur=sell_price_eur,
+            sell_details=sell_details,
+            selling_fees=round(cc.convert(fees, currency, "EUR", date = sell_date),2)
+        ))
         return ((nb_stocks-to_sell), average_acquisition_price, sell_details)
 
     # TODO differentiate by stock_symbol
@@ -176,15 +228,16 @@ class StockHelper:
                 break
         if to_sell > 0:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
-        self.stock_sales[sell_date.year].append({
-            "symbol": symbol,
-            "nb_stocks_sold": nb_stocks-to_sell,
-            "unit_acquisition_price": round(weighted_average_price,2),
-            "sell_date": sell_date,
-            "sell_price_eur": sell_price_eur,
-            "sell_details": sell_details,
-            "selling_fees": round(cc.convert(fees, currency, "EUR", date = sell_date),2)
-        })
+        self.stock_sales[sell_date.year].append(SaleEvent(
+            symbol=symbol,
+            stock_type="rsu",
+            nb_stocks_sold=nb_stocks-to_sell,
+            unit_acquisition_price=round(weighted_average_price,2),
+            sell_date=sell_date,
+            sell_price_eur=sell_price_eur,
+            sell_details=sell_details,
+            selling_fees=round(cc.convert(fees, currency, "EUR", date = sell_date),2)
+        ))
         return ((nb_stocks-to_sell), weighted_average_price, sell_details)
 
 ####### tax computation functions #######
@@ -199,41 +252,46 @@ class StockHelper:
         other_taxable_gain = 0 # this would contribute to boxes 1TT/1UT
 
         for sale in sell_events:
-            sell_date = sale["sell_date"]
-            sell_date_minus_2y = sell_date + relativedelta(years=-2)
-            sell_date_minus_8y = sell_date + relativedelta(years=-8)
-            for sale_detail in sale["sell_details"]:
-                plan_name = sale_detail["plan_name"]
-                if plan_name not in self.rsu_plans:
-                    # acquisition gain only applies to RSU
-                    continue
-                taxation_scheme = self.rsu_plans[plan_name].taxation_scheme
-                acq_date = sale_detail["acq_date"]
-                usd_eur = cc.convert(1, "USD", "EUR", date = acq_date)
-                gain_eur = sale_detail["count"] * sale_detail["acq_price"] * usd_eur
-                # gain tax
-                if taxation_scheme == "2015" or taxation_scheme == "2017":
-                    # 50% rebates btw 2 and 8y retention, 65% above 8y
-                    if acq_date <= sell_date_minus_8y:
-                        taxable_gain += gain_eur * 0.65
-                        rebates += gain_eur * 0.35
-                    elif acq_date <= sell_date_minus_2y:
+            if sale.stock_type == "stockoption":
+                # exercise gain only applies to Stock Options
+                # /!\ only stock options attributed after 28/09/2012 are supported
+                for sale_detail in sale.sell_details:
+                    exercise_gain_eur = sale_detail["count"] * (sale.sell_price_eur - sale_detail["strike_price_eur"])
+                    other_taxable_gain += exercise_gain_eur
+            elif sale.stock_type == "rsu":
+                # acquisition gain only applies to RSU
+                sell_date = sale.sell_date
+                sell_date_minus_2y = sell_date + relativedelta(years=-2)
+                sell_date_minus_8y = sell_date + relativedelta(years=-8)
+                for sale_detail in sale.sell_details:
+                    plan_name = sale_detail["plan_name"]
+                    taxation_scheme = self.rsu_plans[plan_name].taxation_scheme
+                    acq_date = sale_detail["acq_date"]
+                    usd_eur = cc.convert(1, "USD", "EUR", date = acq_date) # TODO: fetch the actual currency instead of hardcoding USD here
+                    gain_eur = sale_detail["count"] * sale_detail["acq_price"] * usd_eur
+                    # gain tax
+                    if taxation_scheme == "2015" or taxation_scheme == "2017":
+                        # 50% rebates btw 2 and 8y retention, 65% above 8y
+                        if acq_date <= sell_date_minus_8y:
+                            taxable_gain += gain_eur * 0.65
+                            rebates += gain_eur * 0.35
+                        elif acq_date <= sell_date_minus_2y:
+                            taxable_gain += gain_eur * 0.5
+                            rebates += gain_eur * 0.5
+                        else:
+                            taxable_gain += gain_eur #too recent to have a rebate
+                    elif taxation_scheme == "2018":
+                        # 50% rebate
                         taxable_gain += gain_eur * 0.5
-                        rebates += gain_eur * 0.5
+                        rebates_50p += gain_eur * 0.5
                     else:
-                        taxable_gain += gain_eur #too recent to have a rebate
-                elif taxation_scheme == "2018":
-                    # 50% rebate
-                    taxable_gain += gain_eur * 0.5
-                    rebates_50p += gain_eur * 0.5
-                else:
-                    raise Exception(f"Unsupported tax scheme: {taxation_scheme}")
+                        raise Exception(f"Unsupported tax scheme: {taxation_scheme}")
 
         return {
             "taxable_acquisition_gain_1TZ": round(taxable_gain),
             "acquisition_gain_rebates_1UZ": round(rebates),
             "acquisition_gain_50p_rebates_1WZ": round(rebates_50p),
-            "other_taxable_gain_1TT_1UT": other_taxable_gain
+            "other_taxable_gain_1TT_1UT": round(other_taxable_gain)
         }
 
     # the other bible of capital gain tax (aka notice for form 2074):
@@ -246,17 +304,20 @@ class StockHelper:
         sell_events = self.stock_sales[year]
         total_capital_gain = 0
         for sale in sell_events:
+            if sale.stock_type == "stockoption":
+                # stock option is "exercise and sold" immediately so there is no capital gain
+                continue
             sell_event_report = {}
-            sell_event_report["selling_date_512"] = sale['sell_date']
-            sell_event_report["sell_price_514"] = sale['sell_price_eur']
-            sell_event_report["sold_stock_units_515"] = sale['nb_stocks_sold']
-            global_selling_proceeds = sale['sell_price_eur'] * sale['nb_stocks_sold']
+            sell_event_report["selling_date_512"] = sale.sell_date
+            sell_event_report["sell_price_514"] = sale.sell_price_eur
+            sell_event_report["sold_stock_units_515"] = sale.nb_stocks_sold
+            global_selling_proceeds = sale.sell_price_eur * sale.nb_stocks_sold
             sell_event_report["global_selling_proceeds_516"] = global_selling_proceeds
-            sell_event_report["selling_fees_517"] = sale['selling_fees']
-            net_selling_proceeds = global_selling_proceeds - sale['selling_fees']
+            sell_event_report["selling_fees_517"] = sale.selling_fees
+            net_selling_proceeds = global_selling_proceeds - sale.selling_fees
             sell_event_report["net_selling_proceeds_518"] = net_selling_proceeds
-            sell_event_report["unit_acquisition_price_520"] = sale['unit_acquisition_price']
-            global_acquisition_cost = round(sale['unit_acquisition_price'] * sale['nb_stocks_sold'])
+            sell_event_report["unit_acquisition_price_520"] = sale.unit_acquisition_price
+            global_acquisition_cost = round(sale.unit_acquisition_price * sale.nb_stocks_sold)
             sell_event_report["global_acquisition_cost_521"] = global_acquisition_cost
             sell_event_report["acquisition_fees_522"] = 0 # TODO: check how to report this, if we need to support it
             total_acquisition_cost = global_acquisition_cost + sell_event_report["acquisition_fees_522"]
