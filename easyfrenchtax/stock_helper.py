@@ -11,7 +11,7 @@ SaleEvent = namedtuple("SaleEvent", ["symbol", "stock_type", "nb_stocks_sold", "
 
 
 # currency converter (USD/EUR in particular)
-cc = CurrencyConverter(fallback_on_wrong_date=True)
+cc = CurrencyConverter(fallback_on_wrong_date=True, fallback_on_missing_rate=True)
 
 class StockHelper:
     def __init__(self):
@@ -22,17 +22,34 @@ class StockHelper:
         self.stock_sales = defaultdict(list)
         self.weighted_average_prices = {} # "prix moyen pondéré" in euro ; keyed by a tuple (plan_name, acq_date)
 
+    def reset(self, stock_types = "espp;stockoption;rsu", symbols = None):
+        self.stock_sales.clear()
+        self.weighted_average_prices.clear()
+        stock_types_mapping = {
+            "espp": self.espp_stocks,
+            "stockoption": self.stock_options,
+            "rsu": self.rsus
+        }
+        for stock_type in [stock_types_mapping[st] for st in stock_types.split(";")]:
+            if not symbols:
+                stocks_subset = stock_type.values()
+            else:
+                stocks_subset = [stock_type[symbol] for symbol in symbols]
+            for stocks in stocks_subset:
+                for i,s in enumerate(stocks):
+                    stocks[i] = s._replace(available=s.count)
+
     def summary(self):
         summary = defaultdict(lambda : defaultdict(int))
         for symbol, rsus in self.rsus.items():
             for rsu in rsus:
-                summary[symbol][rsu.plan_name] += rsu.count
+                summary[symbol]["RSU"] += rsu.count
         for symbol, espps in self.espp_stocks.items():
             for espp in espps:
-                summary[symbol][espp.plan_name] += espp.count
+                summary[symbol]["ESPP"] += espp.count
         for symbol, stockoptions in self.stock_options.items():
             for stockoption in stockoptions:
-                summary[symbol][stockoption.plan_name] += stockoption.count
+                summary[symbol]["StockOption"] += stockoption.count
         return summary
         
 ####### RSU related load functions #######

@@ -28,12 +28,12 @@ def convert_fn():
 def test_summary(stock_helper_with_plan):
     summary = stock_helper_with_plan.summary()
     assert set(summary.keys()) == {"CAKE", "BUD", "PZZA"}
-    assert set(summary["CAKE"].keys()) == {"RSU JUN 16"}
-    assert summary["CAKE"]["RSU JUN 16"] == 320
-    assert set(summary["BUD"].keys()) == {"espp"}
-    assert summary["BUD"]["espp"] == 500
-    assert set(summary["PZZA"].keys()) == {"SO"}
-    assert summary["PZZA"]["SO"] == 150
+    assert set(summary["CAKE"].keys()) == {"RSU"}
+    assert summary["CAKE"]["RSU"] == 320
+    assert set(summary["BUD"].keys()) == {"ESPP"}
+    assert summary["BUD"]["ESPP"] == 500
+    assert set(summary["PZZA"].keys()) == {"StockOption"}
+    assert summary["PZZA"]["StockOption"] == 150
 
 def test_weighted_average_price(stock_helper_with_plan):
     weighted_average_price = stock_helper_with_plan.compute_weighted_average_prices("CAKE", date(2018, 7, 1))
@@ -119,3 +119,52 @@ def test_stockoptions_sale(stock_helper_with_plan, convert_fn):
     assert agt["other_taxable_gain_1TT_1UT"] == round(convert_fn(50*(sell_price-strike_price), "USD", "EUR", date(2021,8,2))) , "Exercise gain tax should be compliant"
     assert not any(cgt["2042C"].values()), "Stock options 'exercise and sell' should not yield capital gain (thus no capital gain tax)"
     assert len(cgt["2074"]) == 0, "Stock options 'exercise and sell' should not yield capital gain (thus no capital gain tax)"
+
+def test_reset_all(stock_helper_with_plan):
+    # CAKE=240 ; BUD=500 ; PZZA=150
+    stock_helper_with_plan.sell_rsus("CAKE", 50, date(2021,8,2), sell_price=123, fees=0, currency="USD")
+    stock_helper_with_plan.sell_espp("BUD", 50, date(2021,8,2), sell_price=123, fees=0, currency="USD")
+    stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021,8,2), sell_price=123, fees=0, currency="USD")
+    stock_helper_with_plan.reset()
+    assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
+    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
+    assert len(stock_helper_with_plan.stock_sales) == 0
+
+def test_reset_by_stocktype(stock_helper_with_plan):
+    # CAKE=240 ; BUD=500 ; PZZA=150
+    stock_helper_with_plan.sell_rsus("CAKE", 50, date(2021,8,2), sell_price=123, fees=0, currency="USD")
+    stock_helper_with_plan.sell_espp("BUD", 50, date(2021,8,2), sell_price=123, fees=0, currency="USD")
+    stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021,8,2), sell_price=123, fees=0, currency="USD")
+    assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 450
+    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
+    stock_helper_with_plan.reset(stock_types="espp")
+    assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
+    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
+    stock_helper_with_plan.reset(stock_types="stockoption")
+    assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
+    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
+    stock_helper_with_plan.reset(stock_types="rsu")
+    assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
+    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
+
+def test_reset_by_symbol(stock_helper_with_plan):
+    # CAKE=240 ; BUD=500 ; PZZA=150
+    stock_helper_with_plan.sell_rsus("CAKE", 50, date(2021,8,2), sell_price=123, fees=0, currency="USD")
+    stock_helper_with_plan.sell_espp("BUD", 50, date(2021,8,2), sell_price=123, fees=0, currency="USD")
+    stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021,8,2), sell_price=123, fees=0, currency="USD")
+    assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 450
+    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
+    stock_helper_with_plan.reset(symbols=["CAKE","PZZA"])
+    assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 450
+    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
+    stock_helper_with_plan.reset(symbols=["BUD"])
+    assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
+    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
