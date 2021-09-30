@@ -7,17 +7,17 @@ from currency_converter import CurrencyConverter
 def stock_helper_with_plan():
     stock_helper = StockHelper()
     stock_helper.rsu_plan("RSU JUN 16", date(2016, 6, 28), "CAKE", "USD")
-    stock_helper.rsu_vesting("CAKE", "RSU JUN 16", 240, date(2018,6,29), 20)
-    stock_helper.rsu_vesting("CAKE", "RSU JUN 16", 10, date(2018,7,30), 18)
-    stock_helper.rsu_vesting("CAKE", "RSU JUN 16", 10, date(2018,8,28), 19)
-    stock_helper.rsu_vesting("CAKE", "RSU JUN 16", 10, date(2018,9,28), 14)
-    stock_helper.rsu_vesting("CAKE", "RSU JUN 16", 10, date(2018,10,29), 15)
-    stock_helper.rsu_vesting("CAKE", "RSU JUN 16", 10, date(2018,11,28), 14)
-    stock_helper.rsu_vesting("CAKE", "RSU JUN 16", 10, date(2018,12,28), 19)
-    stock_helper.rsu_vesting("CAKE", "RSU JUN 16", 10, date(2019,1,28), 23)
-    stock_helper.rsu_vesting("CAKE", "RSU JUN 16", 10, date(2019,2,28), 24)
-    stock_helper.add_espp("BUD", 500, date(2019,1,15),22, "USD")
-    stock_helper.add_stockoptions("PZZA", "SO", 150, date(2018,1,15), 5, "USD")
+    stock_helper.rsu_vesting(1, "CAKE", "RSU JUN 16", 240, date(2018,6,29), 20)
+    stock_helper.rsu_vesting(1, "CAKE", "RSU JUN 16", 10, date(2018,7,30), 18)
+    stock_helper.rsu_vesting(1, "CAKE", "RSU JUN 16", 10, date(2018,8,28), 19)
+    stock_helper.rsu_vesting(1, "CAKE", "RSU JUN 16", 10, date(2018,9,28), 14)
+    stock_helper.rsu_vesting(1, "CAKE", "RSU JUN 16", 10, date(2018,10,29), 15)
+    stock_helper.rsu_vesting(1, "CAKE", "RSU JUN 16", 10, date(2018,11,28), 14)
+    stock_helper.rsu_vesting(1, "CAKE", "RSU JUN 16", 10, date(2018,12,28), 19)
+    stock_helper.rsu_vesting(1, "CAKE", "RSU JUN 16", 10, date(2019,1,28), 23)
+    stock_helper.rsu_vesting(1, "CAKE", "RSU JUN 16", 10, date(2019,2,28), 24)
+    stock_helper.add_espp(1, "BUD", 500, date(2019,1,15),22, "USD")
+    stock_helper.add_stockoptions(1, "PZZA", "SO", 150, date(2018,1,15), 5, "USD")
     return stock_helper
 
 @pytest.fixture
@@ -63,7 +63,8 @@ def test_acquisition_gain_tax(stock_helper_with_plan):
     assert taxes["taxable_acquisition_gain_1TZ"] == 3431
     assert taxes["acquisition_gain_50p_rebates_1WZ"] == 0
     assert taxes["acquisition_gain_rebates_1UZ"] == 0
-    assert taxes["other_taxable_gain_1TT_1UT"] == 0
+    assert taxes["exercise_gain_1_1TT"] == 0
+    assert taxes["exercise_gain_2_1UT"] == 0
 
 def test_acquisition_gain_tax_rebates(stock_helper_with_plan):
     final_count, weighted_average_price, sell = stock_helper_with_plan.sell_rsus("CAKE", 200,date(2021,8,2), sell_price=28, fees=0, currency="USD")
@@ -71,7 +72,8 @@ def test_acquisition_gain_tax_rebates(stock_helper_with_plan):
     assert taxes["taxable_acquisition_gain_1TZ"] == 1716
     assert taxes["acquisition_gain_50p_rebates_1WZ"] == 0
     assert taxes["acquisition_gain_rebates_1UZ"] == 1716
-    assert taxes["other_taxable_gain_1TT_1UT"] == 0
+    assert taxes["exercise_gain_1_1TT"] == 0
+    assert taxes["exercise_gain_2_1UT"] == 0
 
 def test_bofip_case():
     # example from https://bofip.impots.gouv.fr/bofip/3619-PGP.html/identifiant=BOI-RPPM-PVBMI-20-10-20-40-20191220#Regle_du_prix_moyen_pondere_10
@@ -79,16 +81,16 @@ def test_bofip_case():
     stock_helper.rsu_plan("Test", date(2013,1,1), "X", "EUR")
     # plan_name, acq_count, acq_date, acq_price, currency = None
     year_N = 2010
-    stock_helper.rsu_vesting("TEST", "Test", 100, date(year_N    ,1,1), 95)
-    stock_helper.rsu_vesting("TEST", "Test", 200, date(year_N + 2,1,1), 105)
-    stock_helper.rsu_vesting("TEST", "Test", 100, date(year_N + 3,1,1), 107)
+    stock_helper.rsu_vesting(1, "TEST", "Test", 100, date(year_N    ,1,1), 95)
+    stock_helper.rsu_vesting(1, "TEST", "Test", 200, date(year_N + 2,1,1), 105)
+    stock_helper.rsu_vesting(1, "TEST", "Test", 100, date(year_N + 3,1,1), 107)
     _, weighted_average_price_1, _ = stock_helper.sell_rsus("TEST", 150, date(year_N + 7,1,1), 110, 0)
     capital_gain_tax_1 = stock_helper.compute_capital_gain_tax(year_N + 7)
     assert weighted_average_price_1 == 103
     assert capital_gain_tax_1["2042C"]["capital_gain_3VG"] == 1050
     assert sum([r.available for r in stock_helper.rsus["TEST"]]) == 250
-    stock_helper.rsu_vesting("TEST", "Test", 50, date(year_N + 8,9,1), 100)
-    stock_helper.rsu_vesting("TEST", "Test", 300, date(year_N + 8,11,1), 107.50)
+    stock_helper.rsu_vesting(1, "TEST", "Test", 50, date(year_N + 8,9,1), 100)
+    stock_helper.rsu_vesting(1, "TEST", "Test", 300, date(year_N + 8,11,1), 107.50)
     _, weighted_average_price_2, _ = stock_helper.sell_rsus("TEST", 200, date(year_N + 9,1,1), 108, 0)
     capital_gain_tax_2 = stock_helper.compute_capital_gain_tax(year_N + 9)
     assert weighted_average_price_2 == 105
@@ -116,7 +118,8 @@ def test_stockoptions_sale(stock_helper_with_plan, convert_fn):
     strike_price = stock_helper_with_plan.stock_options["PZZA"][0].acq_price
     print(stock_helper_with_plan.stock_sales)
     assert final_count == 50
-    assert agt["other_taxable_gain_1TT_1UT"] == round(convert_fn(50*(sell_price-strike_price), "USD", "EUR", date(2021,8,2))) , "Exercise gain tax should be compliant"
+    assert agt["exercise_gain_1_1TT"] == round(convert_fn(50*(sell_price-strike_price), "USD", "EUR", date(2021,8,2))) , "Exercise gain tax should be compliant"
+    assert agt["exercise_gain_2_1UT"] == 0
     assert not any(cgt["2042C"].values()), "Stock options 'exercise and sell' should not yield capital gain (thus no capital gain tax)"
     assert len(cgt["2074"]) == 0, "Stock options 'exercise and sell' should not yield capital gain (thus no capital gain tax)"
 
@@ -129,7 +132,7 @@ def test_reset_all(stock_helper_with_plan):
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
     assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
-    assert len(stock_helper_with_plan.stock_sales) == 0
+    assert len(stock_helper_with_plan.stock_sales[2021]) == 0
 
 def test_reset_by_stocktype(stock_helper_with_plan):
     # CAKE=240 ; BUD=500 ; PZZA=150

@@ -15,8 +15,8 @@ class TaxSimulator:
         self.compute_social_taxes()
 
     def compute_net_salaries(self):
-        incomes_1 = self.state["salary_1_1AJ"] + self.state["so_exercise_gain_1_1TT"]
-        incomes_2 = self.state["salary_2_1BJ"] + self.state["so_exercise_gain_2_1UT"]
+        incomes_1 = self.state["salary_1_1AJ"] + self.state["exercise_gain_1_1TT"]
+        incomes_2 = self.state["salary_2_1BJ"] + self.state["exercise_gain_2_1UT"]
         self.state["deduction_10p_1"] = round(min(incomes_1 * 0.1, 12652)) # capped at 12652, see:
         self.state["deduction_10p_2"] = round(min(incomes_2 * 0.1, 12652)) # https://www.impots.gouv.fr/portail/particulier/questions/comment-puis-je-beneficier-de-la-deduction-forfaitaire-de-10
         self.state["total_net_salaries"] = incomes_1 - self.state["deduction_10p_1"] + incomes_2 - self.state["deduction_10p_2"]
@@ -125,7 +125,7 @@ class TaxSimulator:
 
     def compute_social_taxes(self):
         # stock options
-        so_exercise_gains = self.state["so_exercise_gain_1_1TT"] + self.state["so_exercise_gain_2_1UT"]
+        so_exercise_gains = self.state["exercise_gain_1_1TT"] + self.state["exercise_gain_2_1UT"]
         so_salarycontrib_10p = so_exercise_gains * 0.1
         so_csg = so_exercise_gains * 0.092
         so_crds = so_exercise_gains * 0.005

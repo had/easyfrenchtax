@@ -5,7 +5,7 @@ from collections import defaultdict, namedtuple
 import csv
 import glob
 
-StockGroup = namedtuple("StockGroup", ['count', 'available', 'acq_price', 'acq_price_eur', 'acq_date', 'plan_name'], defaults = [None, ""])
+StockGroup = namedtuple("StockGroup", ['owner', 'count', 'available', 'acq_price', 'acq_price_eur', 'acq_date', 'plan_name'], defaults = [None, ""])
 RsuPlan = namedtuple("RsuPlan", ["name", "grant_date", "taxation_scheme", "stock_symbol", "currency"])
 SaleEvent = namedtuple("SaleEvent", ["symbol", "stock_type", "nb_stocks_sold", "unit_acquisition_price", "sell_date", "sell_price_eur", "sell_details", "selling_fees"])
 
@@ -23,14 +23,16 @@ class StockHelper:
         self.weighted_average_prices = {} # "prix moyen pondéré" in euro ; keyed by a tuple (plan_name, acq_date)
 
     def reset(self, stock_types = "espp;stockoption;rsu", symbols = None):
-        self.stock_sales.clear()
+        stock_types_list = stock_types.split(";")
+        for sales in self.stock_sales.values():
+            sales[:] = [s for s in sales if (symbols and s.symbol not in symbols) or (s.stock_type not in stock_types_list)] 
         self.weighted_average_prices.clear()
         stock_types_mapping = {
             "espp": self.espp_stocks,
             "stockoption": self.stock_options,
             "rsu": self.rsus
         }
-        for stock_type in [stock_types_mapping[st] for st in stock_types.split(";")]:
+        for stock_type in [stock_types_mapping[st] for st in stock_types_list]:
             if not symbols:
                 stocks_subset = stock_type.values()
             else:
@@ -75,10 +77,11 @@ class StockHelper:
                 currency=currency
             )
 
-    def rsu_vesting(self, symbol, plan_name, count, acq_date, acq_price, currency = None):
+    def rsu_vesting(self, owner, symbol, plan_name, count, acq_date, acq_price, currency = None):
         if not currency:
             currency = self.rsu_plans[plan_name].currency
         self.rsus[symbol].append(StockGroup(
+            owner=owner,
             count=count,
             available=count, # new acquisition, so everything available
             acq_price=acq_price,
@@ -88,8 +91,9 @@ class StockHelper:
         ))
         self.rsus[symbol].sort(key=lambda a: a.acq_date)
 
-    def add_espp(self, symbol, count, acq_date, acq_price, currency):
+    def add_espp(self, owner, symbol, count, acq_date, acq_price, currency):
         self.espp_stocks[symbol].append(StockGroup(
+            owner=owner,
             count=count,
             available=count, # new acquisition, so everything available
             acq_price=acq_price,
@@ -99,8 +103,9 @@ class StockHelper:
         ))
         self.espp_stocks[symbol].sort(key=lambda a: a.acq_date)
 
-    def add_stockoptions(self, symbol, plan_name, count, vesting_date, strike_price, currency):
+    def add_stockoptions(self, owner, symbol, plan_name, count, vesting_date, strike_price, currency):
         self.stock_options[symbol].append(StockGroup(
+            owner=owner,
             count=count,
             available=count, # new acquisition, so everything available
             acq_price=strike_price if currency != "EUR" else None,    # only set one of the two acquisition prices...
@@ -124,6 +129,8 @@ class StockHelper:
             with open(tsv_name) as tsv_file:
                 tsv_data = csv.DictReader(tsv_file, delimiter="\t")
                 for row in tsv_data:
+                    owner = int(row["Owner"])
+                    assert(owner == 1 or owner == 2)
                     plan_name = row["Plan name"] 
                     stock_type = row["Stock type"]
                     currency = row["Currency"]
@@ -135,11 +142,11 @@ class StockHelper:
                         if plan_name not in self.rsu_plans:
                             plan_date = parse_date(row["Plan date"])
                             self.rsu_plan(plan_name, plan_date, symbol, currency)
-                        self.rsu_vesting(symbol, plan_name, acq_count, acq_date, acq_price, currency)
+                        self.rsu_vesting(owner, symbol, plan_name, acq_count, acq_date, acq_price, currency)
                     elif stock_type == "ESPP":
-                        self.add_espp(symbol, acq_count, acq_date, acq_price, currency)
+                        self.add_espp(owner, symbol, acq_count, acq_date, acq_price, currency)
                     elif stock_type == "StockOption":
-                        self.add_stockoptions(symbol, plan_name, acq_count, acq_date, acq_price, currency)
+                        self.add_stockoptions(owner, symbol, plan_name, acq_count, acq_date, acq_price, currency)
 
 ####### stock selling related load functions #######
     def compute_weighted_average_prices(self, symbol, up_to):
@@ -155,6 +162,8 @@ class StockHelper:
             acq_count = acq.available
             total += acq_count * price
             count += acq_count
+        if count == 0:
+            return -1
         weighted_average_price = total / count
         for acq in rsu_up_to_date:
             # upsert the newly computed weighted average price
@@ -174,6 +183,7 @@ class StockHelper:
             sell_from_acq = min(to_sell, acq.available)
             strike_price_eur = acq.acq_price_eur if acq.acq_price_eur else cc.convert(acq.acq_price, currency, "EUR", date = sell_date)
             sell_details.append({
+                "owner": acq.owner,
                 "plan_name": acq.plan_name,
                 "count": sell_from_acq,
                 "strike_price_eur": strike_price_eur,
@@ -250,6 +260,9 @@ class StockHelper:
         # acquisitions are sorted by date, this is the rule set by the tax office (FIFO, or PEPS="premier entré premier sorti")
         # we only keep stocks acquired *before* the sell date, in case we input a sell event in the middle of acquisitions
         rsu_before_sell_date = [r for r in self.rsus[symbol] if r.acq_date < sell_date]
+        if not rsu_before_sell_date:
+            # no rsu for that date
+            return (0,0,[])
         for i,acq in enumerate(rsu_before_sell_date):
             if acq.available == 0:
                 continue
@@ -288,7 +301,8 @@ class StockHelper:
         taxable_gain = 0       # this would contribute to box 1TZ
         rebates = 0            # this would contribute to box 1UZ
         rebates_50p = 0        # this would contribute to box 1WZ
-        other_taxable_gain = 0 # this would contribute to boxes 1TT/1UT
+        other_taxable_gain_1 = 0 # this would contribute to box 1TT
+        other_taxable_gain_2 = 0 # this would contribute to box 1UT
 
         for sale in sell_events:
             if sale.stock_type == "stockoption":
@@ -296,7 +310,12 @@ class StockHelper:
                 # /!\ only stock options attributed after 28/09/2012 are supported
                 for sale_detail in sale.sell_details:
                     exercise_gain_eur = sale_detail["count"] * (sale.sell_price_eur - sale_detail["strike_price_eur"])
-                    other_taxable_gain += exercise_gain_eur
+                    if sale_detail["owner"] == 1:
+                        other_taxable_gain_1 += exercise_gain_eur
+                    elif sale_detail["owner"] == 2:
+                        other_taxable_gain_2 += exercise_gain_eur
+                    else:
+                        raise Exception(f"Owner must be 1 or 2, not {sale_detail['owner']} (type={type(sale_detail['owner'])}")
             elif sale.stock_type == "rsu":
                 # acquisition gain only applies to RSU
                 sell_date = sale.sell_date
@@ -330,7 +349,8 @@ class StockHelper:
             "taxable_acquisition_gain_1TZ": round(taxable_gain),
             "acquisition_gain_rebates_1UZ": round(rebates),
             "acquisition_gain_50p_rebates_1WZ": round(rebates_50p),
-            "other_taxable_gain_1TT_1UT": round(other_taxable_gain)
+            "exercise_gain_1_1TT": round(other_taxable_gain_1),
+            "exercise_gain_2_1UT": round(other_taxable_gain_2)
         }
 
     # the other bible of capital gain tax (aka notice for form 2074):
@@ -361,11 +381,11 @@ class StockHelper:
             sell_event_report["acquisition_fees_522"] = 0 # TODO: check how to report this, if we need to support it
             total_acquisition_cost = global_acquisition_cost + sell_event_report["acquisition_fees_522"]
             sell_event_report["total_acquisition_cost_523"] = total_acquisition_cost
-            result = net_selling_proceeds - total_acquisition_cost
+            result = round(net_selling_proceeds - total_acquisition_cost)
             sell_event_report["result_524"] = result
             tax_report["2074"].append(sell_event_report)
             total_capital_gain += result
-        if total_capital_gain > 0:
+        if total_capital_gain >= 0:
             tax_report["2042C"]["capital_gain_3VG"] = total_capital_gain
         else:
             tax_report["2042C"]["capital_loss_3VH"] = -total_capital_gain
