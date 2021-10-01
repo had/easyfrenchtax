@@ -331,8 +331,8 @@ class StockHelper:
                     if taxation_scheme == "2015" or taxation_scheme == "2017":
                         # 50% rebates btw 2 and 8y retention, 65% above 8y
                         if acq_date <= sell_date_minus_8y:
-                            taxable_gain += gain_eur * 0.65
-                            rebates += gain_eur * 0.35
+                            taxable_gain += gain_eur * 0.35
+                            rebates += gain_eur * 0.65
                         elif acq_date <= sell_date_minus_2y:
                             taxable_gain += gain_eur * 0.5
                             rebates += gain_eur * 0.5

@@ -25,7 +25,7 @@ class TaxSimulator:
         total_per = self.state["per_transfers_1_6NS"] + self.state["per_transfers_2_6NT"] # TODO take capping into account
         # TODO other deductible charges
         self.state["taxable_income"] = self.state["total_net_salaries"] - total_per
-        self.state["taxable_income"] += self.state["acquisition_gain_after_discount_1TZ"] # Taxable part of RSUs
+        self.state["taxable_income"] += self.state["taxable_acquisition_gain_1TZ"] # Taxable part of RSUs
 
     def maybe_print(self, *args):
         if self.debug:
@@ -130,7 +130,8 @@ class TaxSimulator:
         so_csg = so_exercise_gains * 0.092
         so_crds = so_exercise_gains * 0.005
         # capital acquisition, capital gain (RSUs)
-        rsu_socialtax_base = self.state["capital_gain_3VG"] + self.state["acquisition_gain_after_discount_1TZ"] + self.state["acquisition_gain_50p_1WZ"]
+        rsu_socialtax_base = self.state["capital_gain_3VG"] + self.state["taxable_acquisition_gain_1TZ"]\
+            + self.state["acquisition_gain_rebates_1UZ"] + self.state["acquisition_gain_50p_rebates_1WZ"]
         rsu_csgcrds = rsu_socialtax_base * 0.097
         rsu_social_contrib = rsu_socialtax_base * 0.075
         self.state["net_social_taxes"] = round(so_salarycontrib_10p + so_csg + so_crds + rsu_csgcrds + rsu_social_contrib)
