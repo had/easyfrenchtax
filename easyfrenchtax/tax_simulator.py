@@ -9,7 +9,8 @@ class TaxInfoFlag(Enum):
     CHILD_DAYCARE_CREDIT_CAPPING = "Capped child daycare tax credit"
     HOME_SERVICES_CREDIT_CAPPING = "Capped home services tax credit"
     GLOBAL_FISCAL_ADVANTAGES = "Global fiscal advantages"
-
+    CHARITY_75P = "Charity donation giving 75% reduction"
+    CHARITY_66P = "Charity donation giving 66% reduction"
 
 class TaxSimulator:
     def __init__(self, tax_input, debug = False):
@@ -85,7 +86,7 @@ class TaxSimulator:
         household_shares = self.state["household_shares"]
         tax_with_family_quotient, marginal_tax_rate = self._compute_income_tax(household_shares)
         tax_without_family_quotient, _ = self._compute_income_tax(2) # TODO: don't hardcode "2", make that depend on marital state
-        self.flags[TaxInfoFlag.MARGINAL_TAX_RATE] =  f"{round(marginal_tax_rate*100)}%"
+        self.flags[TaxInfoFlag.MARGINAL_TAX_RATE] = f"{round(marginal_tax_rate*100)}%"
         # apply capping of the family quotient benefices, see
         # https://www.economie.gouv.fr/particuliers/quotient-familial
         family_quotient_benefices = tax_without_family_quotient - tax_with_family_quotient
@@ -104,12 +105,19 @@ class TaxSimulator:
     def compute_tax_reductions(self):
         # See https://www.impots.gouv.fr/portail/particulier/questions/jai-fait-des-dons-une-association-que-puis-je-deduire
         # 75% reduction up to 1000e ...
-        donation = self.state["charity_donation_7UD"]
-        donation_reduction_75p = min(donation, 1000) * 0.75
+        charity_donation = self.state["charity_donation_7UD"]
+        capped_or_not = " (capped)" if charity_donation > 1000 else ""
+        charity_donation_75p = min(charity_donation, 1000)
+        self.flags[TaxInfoFlag.CHARITY_75P] = f"{charity_donation_75p}€{capped_or_not}"
+        charity_donation_reduction_75p = charity_donation_75p * 0.75
         # ... then 66% for the rest, up to 20% of the taxable income
-        # TODO check if the 20% capping applies to the donation or the reduction (here it's assumed on the reduction)
-        donation_reduction_66p = min(max(donation-1000, 0) * 0.75,self.state["taxable_income"]*0.20)
-        self.state["donations_reduction"] = donation_reduction_75p + donation_reduction_66p
+        donation_leftover = max(charity_donation-1000, 0)
+        capped_or_not = " (capped)" if donation_leftover > self.state["taxable_income"]*0.20 else ""
+        charity_donation_66p = round(min(donation_leftover, self.state["taxable_income"]*0.20))
+        charity_donation_reduction_66p = charity_donation_66p * 0.66
+        self.flags[TaxInfoFlag.CHARITY_66P] = f"{charity_donation_66p}€{capped_or_not}"
+        # Total reduction
+        self.state["charity_reduction"] = charity_donation_reduction_75p + charity_donation_reduction_66p
 
         # Subscription to PME capital: in 2020 there are 2 segments: before and after Aug.10th (with different reduction rates)
         # See https://www.impots.gouv.fr/portail/particulier/questions/si-jinvestis-dans-une-entreprise-ai-je-droit-une-reduction-dimpot
@@ -135,23 +143,31 @@ class TaxSimulator:
         self.state["home_services_taxcredit"] = capped_home_services * 0.5
 
     def compute_capital_taxes(self):
+        # simple, flat tax based (opting for progressive tax with box "2OP" is not supported in this simulator)
         self.state["capital_gain_tax"] = self.state["capital_gain_3VG"] * 0.128
 
     def compute_net_taxes(self):
         # Tax reductions and credits are in part capped ("Plafonnement des niches fiscales")
         # https://www.service-public.fr/particuliers/vosdroits/F31179
-        fiscal_advantages = self.state["pme_capital_reduction"] + self.state["children_daycare_taxcredit"] + self.state["home_services_taxcredit"]
+        all_taxes_before_capping = self.state["tax_before_reductions"]\
+                                      - self.state["charity_reduction"]
+        taxes_with_reduction_before_capping = all_taxes_before_capping\
+                                              - self.state["pme_capital_reduction"]
+        partial_taxes_2 = max(taxes_with_reduction_before_capping, 0)\
+                          - self.state["children_daycare_taxcredit"]\
+                          - self.state["home_services_taxcredit"]
+
+        fiscal_advantages = all_taxes_before_capping - partial_taxes_2
         if fiscal_advantages > 10000:
             self.flags[TaxInfoFlag.GLOBAL_FISCAL_ADVANTAGES] = f"capped to 10'000€ (originally {fiscal_advantages}€)"
+            net_taxes_after_global_capping = all_taxes_before_capping - 10000
         else:
-            self.flags[TaxInfoFlag.GLOBAL_FISCAL_ADVANTAGES] = f"{fiscal_advantages}€ (uncapped, {10000-fiscal_advantages}€ from ceiling)"
+            self.flags[
+                TaxInfoFlag.GLOBAL_FISCAL_ADVANTAGES] = f"{fiscal_advantages}€ (uncapped, {10000 - fiscal_advantages}€ from ceiling)"
+            net_taxes_after_global_capping = partial_taxes_2
 
-        self.state["fiscal_advantages_capping"] = max(fiscal_advantages-10000,0)
-        self.state["net_taxes"] = self.state["tax_before_reductions"]\
-                                - self.state["donations_reduction"]\
-                                - fiscal_advantages\
-                                + self.state["fiscal_advantages_capping"]\
-                                + self.state["capital_gain_tax"]
+        self.state["net_taxes"] = net_taxes_after_global_capping + self.state["capital_gain_tax"]
+
 
     def compute_social_taxes(self):
         # stock options
@@ -159,7 +175,7 @@ class TaxSimulator:
         so_salarycontrib_10p = so_exercise_gains * 0.1
         so_csg = so_exercise_gains * 0.092
         so_crds = so_exercise_gains * 0.005
-        # capital acquisition, capital gain (RSUs)
+        # capital acquisition (RSUs), capital gain (RSUs and normal stocks)
         rsu_socialtax_base = self.state["capital_gain_3VG"] + self.state["taxable_acquisition_gain_1TZ"]\
             + self.state["acquisition_gain_rebates_1UZ"] + self.state["acquisition_gain_50p_rebates_1WZ"]
         rsu_csgcrds = rsu_socialtax_base * 0.097
