@@ -198,7 +198,7 @@ def test_pme_capital_subscription():
     tax_sim = TaxSimulator(tax_input)
     tax_result = tax_sim.state
     assert tax_result["net_taxes"] == 6232
-    assert tax_result["pme_capital_reduction"] == 180 + 500
+    assert tax_result["pme_subscription_reduction"] == 180 + 500
 
 def test_pme_capital_subscription_ceiling():
     tax_input = {
@@ -212,7 +212,7 @@ def test_pme_capital_subscription_ceiling():
     tax_sim = TaxSimulator(tax_input)
     tax_result = tax_sim.state
     assert tax_result["net_taxes"] == 18512
-    assert tax_result["pme_capital_reduction"] == 20100
+    assert tax_result["pme_subscription_reduction"] == 20100
 
 def test_capital_gain():
     tax_input = {
