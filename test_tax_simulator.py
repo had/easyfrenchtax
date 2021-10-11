@@ -1,6 +1,7 @@
 from easyfrenchtax import TaxSimulator, TaxInfoFlag
 from pprint import pprint
 
+
 # NOTE: all tests value have been checked against the official french tax simulator:
 # https://www3.impots.gouv.fr/simulateur/calcul_impot/2021/simplifie/index.htm
 
@@ -73,6 +74,7 @@ def test_fee_rebate_capping():
     assert tax_sim.flags[TaxInfoFlag.MARGINAL_TAX_RATE] == "30%"
     assert tax_sim.flags[TaxInfoFlag.FEE_REBATE_INCOME_2] == "taxable income += 348€"
 
+
 def test_per_deduction():
     tax_input = {
         "household_shares": 2,
@@ -86,6 +88,7 @@ def test_per_deduction():
     tax_result = tax_sim.state
     assert tax_result["net_taxes"] == 3912.0
     assert tax_sim.flags[TaxInfoFlag.MARGINAL_TAX_RATE] == "30%"
+
 
 def test_children_daycare_credit():
     tax_input = {
@@ -101,6 +104,7 @@ def test_children_daycare_credit():
     assert tax_sim.flags[TaxInfoFlag.MARGINAL_TAX_RATE] == "0%"
     assert tax_sim.flags[TaxInfoFlag.CHILD_DAYCARE_CREDIT_CAPPING] == "capped to 2'300€ (originally 2500€)"
 
+
 def test_home_services_credit():
     tax_input = {
         "household_shares": 2.5,
@@ -114,6 +118,7 @@ def test_home_services_credit():
     assert tax_result["net_taxes"] == -6750.0
     assert tax_sim.flags[TaxInfoFlag.MARGINAL_TAX_RATE] == "0%"
     assert tax_sim.flags[TaxInfoFlag.HOME_SERVICES_CREDIT_CAPPING] == "capped to 13500€ (originally 14000€)"
+
 
 def test_home_services_credit_2():
     tax_input = {
@@ -129,6 +134,7 @@ def test_home_services_credit_2():
     assert tax_sim.flags[TaxInfoFlag.MARGINAL_TAX_RATE] == "0%"
     assert tax_sim.flags[TaxInfoFlag.HOME_SERVICES_CREDIT_CAPPING] == "capped to 15000€ (originally 16000€)"
 
+
 def test_charity_reduction_no_credit():
     tax_input = {
         "household_shares": 4,
@@ -141,6 +147,7 @@ def test_charity_reduction_no_credit():
     tax_result = tax_sim.state
     assert tax_result["net_taxes"] == 0, "reduction is not credit"
     assert tax_sim.flags[TaxInfoFlag.CHARITY_75P] == "500€"
+
 
 def test_charity_reduction_75p():
     tax_input = {
@@ -155,6 +162,7 @@ def test_charity_reduction_75p():
     assert tax_result["net_taxes"] == 6537
     assert tax_result["charity_reduction"] == 375
     assert tax_sim.flags[TaxInfoFlag.CHARITY_75P] == "500€"
+
 
 def test_charity_reduction_66p():
     tax_input = {
@@ -171,6 +179,7 @@ def test_charity_reduction_66p():
     assert tax_sim.flags[TaxInfoFlag.CHARITY_75P] == "1000€ (capped)"
     assert tax_sim.flags[TaxInfoFlag.CHARITY_66P] == "500€"
 
+
 def test_charity_reduction_ceiling():
     tax_input = {
         "household_shares": 2,
@@ -186,13 +195,14 @@ def test_charity_reduction_ceiling():
     assert tax_sim.flags[TaxInfoFlag.CHARITY_75P] == "1000€ (capped)"
     assert tax_sim.flags[TaxInfoFlag.CHARITY_66P] == "27000€ (capped)"
 
+
 def test_pme_capital_subscription():
     tax_input = {
         "household_shares": 2,
         "nb_kids": 0,
         "salary_1_1AJ": 30000,
         "salary_2_1BJ": 40000,
-        "pme_capital_subscription_7CF": 1000, # 18% reduction => 180€
+        "pme_capital_subscription_7CF": 1000,  # 18% reduction => 180€
         "pme_capital_subscription_7CH": 2000  # 25% reduction => 500€
     }
     tax_sim = TaxSimulator(tax_input)
@@ -200,19 +210,21 @@ def test_pme_capital_subscription():
     assert tax_result["net_taxes"] == 6232
     assert tax_result["pme_subscription_reduction"] == 180 + 500
 
+
 def test_pme_capital_subscription_ceiling():
     tax_input = {
         "household_shares": 2,
         "nb_kids": 0,
         "salary_1_1AJ": 70000,
         "salary_2_1BJ": 80000,
-        "pme_capital_subscription_7CF": 70000, # 18% reduction => 180€
+        "pme_capital_subscription_7CF": 70000,  # 18% reduction => 180€
         "pme_capital_subscription_7CH": 50000  # 25% reduction => 500€
     }
     tax_sim = TaxSimulator(tax_input)
     tax_result = tax_sim.state
     assert tax_result["net_taxes"] == 18512
     assert tax_result["pme_subscription_reduction"] == 20100
+
 
 def test_capital_gain():
     tax_input = {
@@ -227,6 +239,7 @@ def test_capital_gain():
     assert tax_result["net_taxes"] == 9472
     assert tax_result["capital_gain_tax"] == 2560
     assert tax_result["net_social_taxes"] == 3440
+
 
 def test_capital_gain_and_tax_reductions():
     tax_input = {
@@ -243,6 +256,7 @@ def test_capital_gain_and_tax_reductions():
     assert tax_result["net_taxes"] == 2560, "tax reduction doesn't apply to capital gain tax"
     assert tax_result["capital_gain_tax"] == 2560
     assert tax_result["net_social_taxes"] == 3440
+
 
 def test_capital_gain_and_tax_credit():
     tax_input = {
