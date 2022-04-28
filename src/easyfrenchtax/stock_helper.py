@@ -242,7 +242,8 @@ class StockHelper:
             if to_sell == 0:
                 break
         if to_sell > 0:
-            print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
+            print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have")
+            return (0, 0, [])
         average_acquisition_price = total_acquisition_price / (nb_stocks - to_sell)
         self.stock_sales[sell_date.year].append(SaleEvent(
             symbol=symbol,
