@@ -235,7 +235,8 @@ class TaxSimulator:
                                                                f" (uncapped, {10000 - fiscal_advantages}€ from ceiling)"
             net_taxes_after_global_capping = partial_taxes_2
 
-        self.state["net_taxes"] = round(net_taxes_after_global_capping + self.state["capital_gain_tax"], 2)
+        net_taxes = net_taxes_after_global_capping + self.state["capital_gain_tax"] - self.state["interest_tax_already_paid_2CK"]
+        self.state["net_taxes"] = round(net_taxes, 2)
 
     def compute_social_taxes(self):
         # stock options
@@ -249,5 +250,5 @@ class TaxSimulator:
                              + self.state["acquisition_gain_rebates_1UZ"] + self.state[
                                  "acquisition_gain_50p_rebates_1WZ"]
         rsu_socialtaxes = rsu_socialtax_base * (0.097 + 0.075)
-        investments_interests_csgcrds = self.state["taxable_investment_income"] * (0.1 + 0.075)
+        investments_interests_csgcrds = (self.state["taxable_investment_income"] - self.state["fixed_income_interests_already_taxed_2BH"]) * (0.1 + 0.075)
         self.state["net_social_taxes"] = round(so_socialtaxes + rsu_socialtaxes + investments_interests_csgcrds)

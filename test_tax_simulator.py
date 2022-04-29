@@ -1,3 +1,5 @@
+import pprint
+
 from src.easyfrenchtax import TaxSimulator, TaxInfoFlag
 
 
@@ -231,6 +233,39 @@ def test_pme_capital_subscription_ceiling():
     assert tax_result["pme_subscription_reduction"] == 20100
 
 
+def test_global_fiscal_advantages_capping_1():
+    tax_input = {
+        "married": True,
+        "nb_children": 0,
+        "salary_1_1AJ": 70000,
+        "salary_2_1BJ": 80000,
+        "pme_capital_subscription_7CH": 50000
+    }
+    tax_sim = TaxSimulator(2022, tax_input)
+    tax_result = tax_sim.state
+    pprint.pprint(tax_result)
+    pprint.pprint(tax_sim.flags)
+    assert tax_result["net_taxes"] == 18344
+    assert tax_sim.flags[TaxInfoFlag.GLOBAL_FISCAL_ADVANTAGES] == "capped to 10'000€ (originally 12500.0€)"
+
+
+def test_global_fiscal_advantages_capping_2():
+    tax_input = {
+        "married": True,
+        "nb_children": 1,
+        "salary_1_1AJ": 70000,
+        "salary_2_1BJ": 80000,
+        "pme_capital_subscription_7CH": 35000,
+        "children_daycare_fees_7GA": 2500,
+        "home_services_7DB": 5000
+    }
+    tax_sim = TaxSimulator(2022, tax_input)
+    tax_result = tax_sim.state
+    pprint.pprint(tax_result)
+    pprint.pprint(tax_sim.flags)
+    assert tax_result["net_taxes"] == 16752
+    assert tax_sim.flags[TaxInfoFlag.GLOBAL_FISCAL_ADVANTAGES] == "capped to 10'000€ (originally 12400.0€)"
+
 def test_capital_gain():
     tax_input = {
         "married": True,
@@ -315,3 +350,42 @@ def test_fixed_income_investments():
     assert tax_result["investment_income_tax"] == 19
     assert tax_result["net_taxes"] == 6763
     assert tax_result["net_social_taxes"] == 26
+
+
+def test_fixed_income_investments_partially_taxed_already():
+    tax_input = {
+        "married": True,
+        "nb_children": 0,
+        "salary_1_1AJ": 30000,
+        "salary_2_1BJ": 40000,
+        "fixed_income_interests_2TR": 200,
+        "fixed_income_interests_already_taxed_2BH": 100,
+        "interest_tax_already_paid_2CK": 15
+    }
+    tax_sim = TaxSimulator(2022, tax_input)
+    tax_result = tax_sim.state
+    assert tax_result["reference_fiscal_income"] == 63200
+    assert tax_result["simple_tax_right"] == 6744
+    assert tax_result["investment_income_tax"] == 26
+    assert tax_result["net_taxes"] == 6755
+    assert tax_result["net_social_taxes"] == 18
+
+
+def test_partial_tax_and_global_capping():
+    tax_input = {
+        "married": True,
+        "nb_children": 0,
+        "salary_1_1AJ": 70000,
+        "salary_2_1BJ": 80000,
+        "pme_capital_subscription_7CH": 50000,
+        "fixed_income_interests_2TR": 200,
+        "fixed_income_interests_already_taxed_2BH": 100,
+        "interest_tax_already_paid_2CK": 15
+    }
+    tax_sim = TaxSimulator(2022, tax_input)
+    tax_result = tax_sim.state
+    assert tax_result["reference_fiscal_income"] == 135200
+    assert tax_result["simple_tax_right"] == 28344
+    assert tax_result["investment_income_tax"] == 26
+    assert tax_result["net_taxes"] == 18355
+    assert tax_result["net_social_taxes"] == 18
