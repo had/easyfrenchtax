@@ -1,1 +1,2 @@
 currencyconverter
+python-dateutil
