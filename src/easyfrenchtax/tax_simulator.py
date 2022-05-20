@@ -140,9 +140,9 @@ class TaxSimulator:
         capping_parameter = self.parameters.family_quotient_benefices_capping
         household_shares = self.state["household_shares"]
         tax_with_family_quotient, marginal_tax_rate = self._compute_income_tax(household_shares)
-        tax_without_family_quotient, _ = self._compute_income_tax(
-            2)  # TODO: don't hardcode "2", make that depend on marital state
         self.flags[TaxInfoFlag.MARGINAL_TAX_RATE] = f"{round(marginal_tax_rate * 100)}%"
+        household_shares_without_family_quotient = 2 if self.state["married"] else 1
+        tax_without_family_quotient, _ = self._compute_income_tax(household_shares_without_family_quotient)
         # apply capping of the family quotient benefices, see
         # https://www.economie.gouv.fr/particuliers/quotient-familial
         family_quotient_benefices = tax_without_family_quotient - tax_with_family_quotient
