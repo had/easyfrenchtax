@@ -12,6 +12,7 @@ class TaxInfoFlag(Enum):
     GLOBAL_FISCAL_ADVANTAGES = "Global fiscal advantages"
     CHARITY_75P = "Charity donation resulting in 75% reduction"
     CHARITY_66P = "Charity donation resulting in 66% reduction"
+    RENTAL_DEFICIT_CARRYOVER = "Rental income deficit to carry-over next years"
 
 # Lots of parameters evolve year after year (inflation, political decisions, etc.)
 # This dictionary gathers all variable parameters.
@@ -43,6 +44,7 @@ class TaxSimulator:
         self.debug = debug
         self.state = defaultdict(int, tax_input)
         self.compute_household_shares()
+        self.compute_rental_income()
         self.compute_net_income()
         self.compute_taxable_income()
         self.compute_flat_rate_taxes()
@@ -57,16 +59,65 @@ class TaxSimulator:
     def compute_household_shares(self):
         # See https://www.service-public.fr/particuliers/vosdroits/F2705 and https://www.service-public.fr/particuliers/vosdroits/F2702
         # /!\ extra half-shares and shared custody are not taken into account
+        # TODO: single individual taxation is not properly computed right now
+        if not self.state["married"]:
+            # better raising exception than reporting something wrong
+            raise Exception("Non-married situation is buggy for now")
         base_shares = 2 if self.state["married"] else 1
         nb_children_1 = min(self.state["nb_children"], 2)
         nb_children_2 = max(0, self.state["nb_children"] - nb_children_1)
         self.state["household_shares"] = base_shares + nb_children_1 * 0.5 + nb_children_2
 
+    def compute_rental_income(self):
+        # French tax system considers only non-furnished apartments to be "rental income". Furnished apartments are
+        # part of commercial incomes (BIC in the tax system, for "bénéfices industriels et commerciaux").
+        #
+        # Net rental income can be determined in 2 ways, a simplified reporting (subject to eligibility criteria) or the
+        # default reporting. The simplified tax regime ("micro-foncier") of reporting requires income to be less than a
+        # ceiling (15'000€ so far), and having no special deduction plans. Otherwise, by default, the "régime réel"
+        # requires to compute the net result and in case it's negative, split charges between what's eligible for global
+        # income deduction vs. what is to be deduced from future rental income (can be carried over for 10 years).
+        # These 2 ways are mutually exclusive, so the code raises exceptions here.
+        # Sources: https://www.impots.gouv.fr/particulier/location-vide-de-meubles
+        #          https://www.impots.gouv.fr/particulier/questions/je-mets-en-location-un-logement-vide-comment-declarer-les-loyers-percus
+        #          https://www.impots.gouv.fr/sites/default/files/media/3_Documentation/depliants/nid_4009_gp_172.pdf
+        # NOT SUPPORTED: income from foreign countries (4BK and 4BL)
+
+        simplified_income_reporting = self.state["simplified_rental_income_4BE"]
+        net_profit = self.state["real_rental_profit_4BA"]
+        deficit = self.state["real_rental_income_deficit_4BB"]
+        global_deficit = self.state["rental_income_global_deficit_4BC"]
+        previous_deficit = self.state["previous_rental_income_deficit_4BD"]
+
+        if simplified_income_reporting:
+            if net_profit or deficit or global_deficit or previous_deficit:
+                raise Exception("The simplified rental income reporting (4BE) cannot be combined with the default rental income reporting (4BA 4BB 4BC)")
+            if simplified_income_reporting > 15000:
+                raise Exception("Simplified rental income reporting (4BE) cannot exceed 15'000€")
+            final_net_profit = simplified_income_reporting * 0.7 # 30% rebate automatically applied
+            final_deficit_carryover = 0
+        elif net_profit:
+            if deficit or global_deficit:
+                raise Exception("Rental profit reporting (4BA) cannot be combined with rental deficit reporting(4BB 4BC)")
+            final_net_profit = max(net_profit-previous_deficit, 0)
+            final_deficit_carryover = max(0, previous_deficit-net_profit)
+        else:
+            if global_deficit > 10700:
+                raise Exception("Rental deficit for global deduction (4BC) cannot exceed 10'700€")
+            final_net_profit = -global_deficit
+            final_deficit_carryover = deficit + previous_deficit
+
+        self.state["rental_income_result"] = final_net_profit
+        if final_deficit_carryover:
+            self.state["rental_deficit_carryover"] = final_deficit_carryover
+            self.flags[TaxInfoFlag.RENTAL_DEFICIT_CARRYOVER] = f"{final_deficit_carryover}€"
+
     def compute_net_income(self):
         incomes_1 = self.state["salary_1_1AJ"] + self.state["exercise_gain_1_1TT"]
         incomes_2 = self.state["salary_2_1BJ"] + self.state["exercise_gain_2_1UT"]
-        # capped at 12652, see:
+        # capped at 12652e (in 2021), see:
         # https://www.impots.gouv.fr/portail/particulier/questions/comment-puis-je-beneficier-de-la-deduction-forfaitaire-de-10
+        # TODO: there is a minimum deduction to consider (448e in 2022)
         fees_10p_ceiling = self.parameters.fees_10p_deduction_ceiling
         self.state["deduction_10p_1"] = round(min(incomes_1 * 0.1, fees_10p_ceiling))
         self.state["deduction_10p_2"] = round(min(incomes_2 * 0.1,
@@ -77,8 +128,10 @@ class TaxSimulator:
         if incomes_2 * 0.1 > fees_10p_ceiling:
             self.flags[
                 TaxInfoFlag.FEE_REBATE_INCOME_2] = f"taxable income += {round(incomes_2 * 0.1 - fees_10p_ceiling)}€"
-        self.state["total_net_income"] = incomes_1 - self.state["deduction_10p_1"]\
-                                         + incomes_2 - self.state["deduction_10p_2"]
+        net_income = incomes_1 - self.state["deduction_10p_1"]\
+                     + incomes_2 - self.state["deduction_10p_2"]\
+                     + self.state["rental_income_result"]
+        self.state["total_net_income"] = net_income
 
     def compute_taxable_income(self):
         total_per = self.state["per_transfers_1_6NS"] + self.state[
@@ -175,8 +228,9 @@ class TaxSimulator:
         # ... then 66% for the rest, plus the "Dons aux organismes d'intérêt général", up to 20% of the taxable income
         charity_donation_7uf = self.state["charity_donation_7UF"]
         donation_leftover = charity_donation_7uf + max(charity_donation_7ud - 1000, 0)
-        capped_or_not = " (capped)" if donation_leftover > self.state["taxable_income"] * 0.20 else ""
-        charity_donation_66p = round(min(donation_leftover, self.state["taxable_income"] * 0.20))
+        taxable_income = max(self.state["taxable_income"], 0)
+        capped_or_not = " (capped)" if donation_leftover > taxable_income * 0.20 else ""
+        charity_donation_66p = round(min(donation_leftover, taxable_income * 0.20))
         charity_donation_reduction_66p = charity_donation_66p * 0.66
         self.flags[TaxInfoFlag.CHARITY_66P] = f"{charity_donation_66p}€{capped_or_not}"
         # Total reduction
@@ -251,4 +305,7 @@ class TaxSimulator:
                                  "acquisition_gain_50p_rebates_1WZ"]
         rsu_socialtaxes = rsu_socialtax_base * (0.097 + 0.075)
         investments_interests_csgcrds = (self.state["taxable_investment_income"] - self.state["fixed_income_interests_already_taxed_2BH"]) * (0.1 + 0.075)
-        self.state["net_social_taxes"] = round(so_socialtaxes + rsu_socialtaxes + investments_interests_csgcrds)
+        rental_income_base = max(self.state["rental_income_result"], 0)  # rental income result can be negative, but it can't reduce social taxes
+        rental_income_socialtaxes = rental_income_base * (0.097 + 0.075)
+        self.state["net_social_taxes"] = round(so_socialtaxes + rsu_socialtaxes\
+                                               + investments_interests_csgcrds + rental_income_socialtaxes)

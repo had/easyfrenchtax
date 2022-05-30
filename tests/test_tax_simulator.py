@@ -1,12 +1,11 @@
 import pytest
-from collections import namedtuple
 from src.easyfrenchtax import TaxSimulator, TaxInfoFlag
-
+from .common import TaxTest
 
 # NOTE: all tests value have been checked against the official french tax simulator:
 # https://www3.impots.gouv.fr/simulateur/calcul_impot/2021/simplifie/index.htm
 
-TaxTest = namedtuple("TaxTest", ["name", "year", "inputs", "results", "flags"])
+# TODO: split into several files
 tax_tests = [
     TaxTest(name="basic", year=2021,
             inputs={
@@ -188,6 +187,22 @@ tax_tests = [
             flags={
                 TaxInfoFlag.CHARITY_75P: "1000€ (capped)",
                 TaxInfoFlag.CHARITY_66P: "27000€ (capped)",
+            }),
+    TaxTest(name="charity_reduction_negative_income", year=2022,
+            inputs={
+                "married": True,
+                "nb_children": 0,
+                "salary_1_1AJ": 5000,
+                "salary_2_1BJ": 0,
+                "rental_income_global_deficit_4BC": 10000,
+                "charity_donation_7UF": 250,
+            },
+            results={
+                "reference_fiscal_income": -5500,
+                "net_taxes": 0,
+                "charity_reduction": 0
+            },
+            flags={
             }),
     TaxTest(name="pme_capital_subscription", year=2021,
             inputs={

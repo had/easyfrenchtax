@@ -4,6 +4,7 @@ This project helps me understanding and projecting French taxes, especially wrt.
 # Tax simulator
 The following are supported:
 - Progressive income tax
+- Rental income (unfurnished)
 - Family quotient (incl. capping, but excl. shared custody situations)
 - Some deductions/reductions (PER, child care, home services, charity donations)
 - Capping of fiscal advantages ("plafonnement des niches fiscales" in French)
@@ -20,6 +21,10 @@ This module helps filling the tax statement regarding stock acquisition or capit
 - Currency conversion at acquisition/exercise/buying/selling dates
 - Weighted average price ("Prix moyen pondéré" or PMP in French tax lingo)
 - Outputs fields 3VG/3VH for form 2042C, and frame 5 (512-524) + fields 903/913 for form 2074
+
+# Known issues
+- There is currently a problem in computing taxes for single individuals.
+- The minimum fee deduction for salaries is not taken into account
 
 # Contact and contributions
 If you want to chat about this project, don't hesitate to shoot an email at hadrien.hamel@gmail.com. Contributions and bug reports are welcome!
