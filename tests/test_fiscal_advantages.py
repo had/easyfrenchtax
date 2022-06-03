@@ -1,68 +1,9 @@
 import pytest
-from src.easyfrenchtax import TaxSimulator, TaxInfoFlag
-from .common import TaxTest
+import re
+from src.easyfrenchtax import TaxInfoFlag, TaxSimulator
+from .common import TaxTest, TaxExceptionTest, tax_testing
 
-# NOTE: all tests value have been checked against the official french tax simulator:
-# https://www3.impots.gouv.fr/simulateur/calcul_impot/2021/simplifie/index.htm
-
-# TODO: split into several files
 tax_tests = [
-    TaxTest(name="basic", year=2021,
-            inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000
-            },
-            results={
-                "household_shares": 2,
-                "net_taxes": 6912.0
-            },
-            flags={}),
-    TaxTest(name="3_shares", year=2021,
-            inputs={
-                "married": True,
-                "nb_children": 2,
-                "salary_1_1AJ": 28000,
-                "salary_2_1BJ": 35000
-            },
-            results={
-                "household_shares": 3,
-                "net_taxes": 2909.0
-            },
-            flags={
-                TaxInfoFlag.MARGINAL_TAX_RATE: "11%"
-            }),
-    TaxTest(name="family_quotient_capping", year=2021,
-            inputs={
-                "married": True,
-                "nb_children": 2,
-                "salary_1_1AJ": 35000,
-                "salary_2_1BJ": 48000
-            },
-            results={
-                "net_taxes": 7282.0
-            },
-            flags={
-                TaxInfoFlag.FAMILY_QUOTIENT_CAPPING: "tax += 2392.44€",
-                TaxInfoFlag.MARGINAL_TAX_RATE: "11%"
-            }),
-    TaxTest(name="fee_rebate_capping", year=2021,
-            inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 10000,
-                "salary_2_1BJ": 130000
-            },
-            results={
-                "net_taxes": 25916.0,
-                "deduction_10p_2": 12652,
-                "taxable_income": 126348
-            },
-            flags={
-                TaxInfoFlag.FEE_REBATE_INCOME_2: "taxable income += 348€",
-                TaxInfoFlag.MARGINAL_TAX_RATE: "30%"
-            }),
     TaxTest(name="per_deduction", year=2021,
             inputs={
                 "married": True,
@@ -81,18 +22,39 @@ tax_tests = [
     TaxTest(name="children_daycare_credit", year=2021,
             inputs={
                 "married": True,
-                "nb_children": 1,
+                "nb_children": 2,
+                "child_1_birthyear": 2020,
+                "child_2_birthyear": 2010,
                 "salary_1_1AJ": 10000,
                 "salary_2_1BJ": 10000,
                 "children_daycare_fees_7GA": 2500
             },
             results={
-                "household_shares": 2.5,
+                "household_shares": 3,
                 "net_taxes": -1150.0,
             },
             flags={
                 TaxInfoFlag.MARGINAL_TAX_RATE: "0%",
-                TaxInfoFlag.CHILD_DAYCARE_CREDIT_CAPPING: "capped to 2'300€ (originally 2500€)"
+                TaxInfoFlag.CHILD_DAYCARE_CREDIT_CAPPING: "capped to 2300€ (originally 2500€)"
+            }),
+    TaxTest(name="children_daycare_credit_capped_per_child", year=2021,
+            inputs={
+                "married": True,
+                "nb_children": 2,
+                "child_1_birthyear": 2020,
+                "child_2_birthyear": 2018,
+                "salary_1_1AJ": 10000,
+                "salary_2_1BJ": 10000,
+                "children_daycare_fees_7GA": 2500,
+                "children_daycare_fees_7GB": 2000
+            },
+            results={
+                "household_shares": 3,
+                "net_taxes": -2150.0,
+            },
+            flags={
+                TaxInfoFlag.MARGINAL_TAX_RATE: "0%",
+                TaxInfoFlag.CHILD_DAYCARE_CREDIT_CAPPING: "capped to 4300€ (originally 4500€)"
             }),
     TaxTest(name="home_services_credit", year=2021,
             inputs={
@@ -234,131 +196,6 @@ tax_tests = [
             },
             flags={
             }),
-    TaxTest(name="capital_gain", year=2021,
-            inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000,
-                "capital_gain_3VG": 20000
-            },
-            results={
-                "reference_fiscal_income": 83000,
-                "net_taxes": 9472,
-                "capital_gain_tax": 2560,
-                "net_social_taxes": 3440
-            },
-            flags={
-            }),
-    TaxTest(name="capital_gain_and_tax_reductions", year=2021,
-            inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 10000,
-                "salary_2_1BJ": 10000,
-                "capital_gain_3VG": 20000,
-                # the following is big enough to swallow income tax, but it can't reduce capital gain tax
-                "charity_donation_7UD": 30000
-            },
-            results={
-                "net_taxes": 2560,  # tax reduction doesn't apply to capital gain tax
-                "capital_gain_tax": 2560,
-                "net_social_taxes": 3440
-            },
-            flags={
-            }),
-    TaxTest(name="capital_gain_and_tax_credit", year=2021,
-            inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 10000,
-                "salary_2_1BJ": 10000,
-                "capital_gain_3VG": 20000,
-                # the following is big enough to swallow income tax AND capital gain tax (because it's credit)
-                "home_services_7DB": 10000
-            },
-            results={
-                "net_taxes": -2440,
-                "capital_gain_tax": 2560,
-                "net_social_taxes": 3440
-            },
-            flags={
-            }),
-    TaxTest(name="social_taxes_on_stock_options", year=2021,
-            inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000,
-                "exercise_gain_1_1TT": 1000,
-                "exercise_gain_2_1UT": 2000,
-                "capital_gain_3VG": 4000,
-                "taxable_acquisition_gain_1TZ": 8000,
-                "acquisition_gain_rebates_1UZ": 16000,
-                "acquisition_gain_50p_rebates_1WZ": 32000
-            },
-            results={
-                "net_taxes": 10634,
-                "net_social_taxes": 10911
-            },
-            flags={
-            }),
-    TaxTest(name="fixed_income_investments", year=2022,
-            inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000,
-                "fixed_income_interests_2TR": 150,
-            },
-            results={
-                "reference_fiscal_income": 63150,
-                "simple_tax_right": 6744,
-                "investment_income_tax": 19,
-                "net_taxes": 6763,
-                "net_social_taxes": 26
-            },
-            flags={
-            }),
-    TaxTest(name="fixed_income_investments_already_taxed", year=2022,
-            inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000,
-                "fixed_income_interests_2TR": 200,
-                "fixed_income_interests_already_taxed_2BH": 100,
-                "interest_tax_already_paid_2CK": 15
-            },
-            results={
-                "reference_fiscal_income": 63200,
-                "simple_tax_right": 6744,
-                "investment_income_tax": 26,
-                "net_taxes": 6755,
-                "net_social_taxes": 18
-            },
-            flags={
-            }),
-    TaxTest(name="partial_tax_and_global_capping", year=2022,
-            inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 70000,
-                "salary_2_1BJ": 80000,
-                "pme_capital_subscription_7CH": 50000,
-                "fixed_income_interests_2TR": 200,
-                "fixed_income_interests_already_taxed_2BH": 100,
-                "interest_tax_already_paid_2CK": 15
-            },
-            results={
-                "reference_fiscal_income": 135200,
-                "simple_tax_right": 28344,
-                "investment_income_tax": 26,
-                "net_taxes": 18355,
-                "net_social_taxes": 18
-            },
-            flags={
-            }),
     TaxTest(name="global_fiscal_advantages_capping_1", year=2022,
             inputs={
                 "married": True,
@@ -377,6 +214,7 @@ tax_tests = [
             inputs={
                 "married": True,
                 "nb_children": 1,
+                "child_1_birthyear": 2020,
                 "salary_1_1AJ": 70000,
                 "salary_2_1BJ": 80000,
                 "pme_capital_subscription_7CH": 35000,
@@ -396,10 +234,25 @@ tax_tests = [
                          [pytest.param(t.year, t.inputs, t.results, t.flags) for t in tax_tests],
                          ids=[t.name for t in tax_tests])
 def test_tax(year, inputs, results, flags):
-    tax_sim = TaxSimulator(year, inputs)
-    tax_result = tax_sim.state
-    tax_flags = tax_sim.flags
-    for k, res in results.items():
-        assert tax_result[k] == res
-    for k, f in flags.items():
-        assert tax_flags[k] == f
+    tax_testing(year, inputs, results, flags)
+
+
+tax_exception_tests = [
+    TaxExceptionTest(name="children_daycare_credit_too_old", year=2021,
+                     inputs={
+                         "married": True,
+                         "nb_children": 1,
+                         "child_1_birthyear": 2010,
+                         "salary_1_1AJ": 10000,
+                         "salary_2_1BJ": 10000,
+                         "children_daycare_fees_7GA": 2500
+                     },
+                     message=re.escape("You are declaring more children daycare fees than you have children below 6y old")),
+]
+
+@pytest.mark.parametrize("year,inputs,message",
+                         [pytest.param(t.year, t.inputs, t.message) for t in tax_exception_tests],
+                         ids=[t.name for t in tax_exception_tests])
+def test_tax_exception(year, inputs, message):
+    with pytest.raises(Exception, match=message):
+        TaxSimulator(year, inputs)

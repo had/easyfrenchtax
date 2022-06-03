@@ -23,17 +23,17 @@ TaxParameters = namedtuple("TaxParameters", [
 ] )
 yearly_defined_parameters = {
     2021: TaxParameters(
-        family_quotient_benefices_capping = 1570,
-        slices_thresholds = [10084, 25710, 73516, 158122],
-        slices_rates = [0.11, 0.30, 0.41, 0.45],
-        fees_10p_deduction_ceiling = 12652
+        family_quotient_benefices_capping=1570,
+        slices_thresholds=[10084, 25710, 73516, 158122],
+        slices_rates=[0.11, 0.30, 0.41, 0.45],
+        fees_10p_deduction_ceiling=12652
 
     ),
     2022: TaxParameters(
         family_quotient_benefices_capping=1592,
         slices_thresholds=[10225, 26070, 74545, 160336],
         slices_rates=[0.11, 0.30, 0.41, 0.45],
-        fees_10p_deduction_ceiling = 12829
+        fees_10p_deduction_ceiling=12829
     ),
 }
 
@@ -43,7 +43,8 @@ class TaxSimulator:
         self.flags = {}
         self.debug = debug
         self.state = defaultdict(int, tax_input)
-        self.compute_household_shares()
+        self.state["year"] = statement_year
+        self.process_family_information()
         self.compute_rental_income()
         self.compute_net_income()
         self.compute_taxable_income()
@@ -56,7 +57,7 @@ class TaxSimulator:
         self.compute_net_taxes()
         self.compute_social_taxes()
 
-    def compute_household_shares(self):
+    def process_family_information(self):
         # See https://www.service-public.fr/particuliers/vosdroits/F2705 and https://www.service-public.fr/particuliers/vosdroits/F2702
         # /!\ extra half-shares and shared custody are not taken into account
         # TODO: single individual taxation is not properly computed right now
@@ -67,6 +68,15 @@ class TaxSimulator:
         nb_children_1 = min(self.state["nb_children"], 2)
         nb_children_2 = max(0, self.state["nb_children"] - nb_children_1)
         self.state["household_shares"] = base_shares + nb_children_1 * 0.5 + nb_children_2
+        # counting children aged less than 6 years old
+        nb_children_lt_6yo = 0
+        for i in range(1,6):
+            child_birthyear_key = f"child_{i}_birthyear"
+            if child_birthyear_key in self.state:
+                # counting from year-1, (i.e. if declaring in 2022, checking age on Jan 1st 2021)
+                if self.state["year"] - 1 - self.state[child_birthyear_key] <= 6:
+                    nb_children_lt_6yo += 1
+        self.state["nb_children_lt_6yo"] = nb_children_lt_6yo
 
     def compute_rental_income(self):
         # French tax system considers only non-furnished apartments to be "rental income". Furnished apartments are
@@ -163,7 +173,6 @@ class TaxSimulator:
                       slices_thresholds]  # scale thresholds to the number of people in the household
         self.maybe_print("Thresholds: ", thresholds)
         self.maybe_print("Shares: ", household_shares)
-        # TODO: improve
         tax = 0
         income_accounted_for = thresholds[0]
         bucket_n = 0
@@ -249,11 +258,20 @@ class TaxSimulator:
     def compute_tax_credits(self):
         # Daycare fees, capped & rated at 50%. See:
         # https://www.impots.gouv.fr/portail/particulier/questions/je-fais-garder-mon-jeune-enfant-lexterieur-du-domicile-que-puis-je-deduire
-        daycare_fees = self.state["children_daycare_fees_7GA"]
-        if daycare_fees > 2300:
-            self.flags[TaxInfoFlag.CHILD_DAYCARE_CREDIT_CAPPING] = f"capped to 2'300€ (originally {daycare_fees}€)"
-        capped_daycare_fees = min(daycare_fees, 2300)
-        self.state["children_daycare_taxcredit"] = capped_daycare_fees * 0.5
+        nb_children_lt_6yo = self.state["nb_children_lt_6yo"]
+        nb_children_with_daycare_fees = 0
+        total_fees = 0
+        fees_capped_out = 0
+        for c in "ABCDEFG":
+            fees_key = f"children_daycare_fees_7G{c}"
+            if fees_key in self.state:
+                nb_children_with_daycare_fees += 1
+                if nb_children_with_daycare_fees > nb_children_lt_6yo:
+                    raise Exception("You are declaring more children daycare fees than you have children below 6y old")
+                total_fees += min(self.state[fees_key], 2300)
+                fees_capped_out += max(self.state[fees_key]-2300, 0)
+        self.flags[TaxInfoFlag.CHILD_DAYCARE_CREDIT_CAPPING] = f"capped to {total_fees}€ (originally {total_fees+fees_capped_out}€)"
+        self.state["children_daycare_taxcredit"] = total_fees * 0.5
 
         # services at home (cleaning etc.)
         # https://www.impots.gouv.fr/portail/particulier/emploi-domicile

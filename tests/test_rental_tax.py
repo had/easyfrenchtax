@@ -1,8 +1,9 @@
 import re
 
 import pytest
-from src.easyfrenchtax import TaxSimulator, TaxInfoFlag
-from .common import TaxTest, TaxExceptionTest
+from src.easyfrenchtax import TaxSimulator
+from .common import TaxTest, TaxExceptionTest, tax_testing
+
 
 tax_tests = [
     TaxTest(name="rental_income_simplified", year=2022,
@@ -151,24 +152,18 @@ tax_tests = [
                          [pytest.param(t.year, t.inputs, t.results, t.flags) for t in tax_tests],
                          ids=[t.name for t in tax_tests])
 def test_tax(year, inputs, results, flags):
-    tax_sim = TaxSimulator(year, inputs)
-    tax_result = tax_sim.state
-    tax_flags = tax_sim.flags
-    for k, res in results.items():
-        assert tax_result[k] == res
-    for k, f in flags.items():
-        assert tax_flags[k] == f
+    tax_testing(year, inputs, results, flags)
 
 tax_exception_tests = [
     TaxExceptionTest(name="rental_income_simplified_exceeds_ceiling", year=2022,
-            inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 50000,
-                "simplified_rental_income_4BE": 18000,
-            },
-            message=re.escape("Simplified rental income reporting (4BE) cannot exceed 15'000€")),
+                     inputs={
+                         "married": True,
+                         "nb_children": 0,
+                         "salary_1_1AJ": 30000,
+                         "salary_2_1BJ": 50000,
+                         "simplified_rental_income_4BE": 18000,
+                     },
+                     message=re.escape("Simplified rental income reporting (4BE) cannot exceed 15'000€")),
     TaxExceptionTest(name="rental_income_simplified_cannot_combine", year=2022,
                      inputs={
                          "married": True,
@@ -178,7 +173,8 @@ tax_exception_tests = [
                          "simplified_rental_income_4BE": 12000,
                          "real_rental_profit_4BA": 1000
                      },
-                     message=re.escape("The simplified rental income reporting (4BE) cannot be combined with the default rental income reporting (4BA 4BB 4BC)")),
+                     message=re.escape(
+                         "The simplified rental income reporting (4BE) cannot be combined with the default rental income reporting (4BA 4BB 4BC)")),
     TaxExceptionTest(name="rental_income_global_deficit_exceeds_ceiling", year=2022,
                      inputs={
                          "married": True,
