@@ -5,9 +5,8 @@ from .common import TaxTest, tax_testing
 # NOTE: all tests value have been checked against the official french tax simulator:
 # https://www3.impots.gouv.fr/simulateur/calcul_impot/2021/simplifie/index.htm
 
-# TODO: split into several files
 tax_tests = [
-    TaxTest(name="basic", year=2021,
+    TaxTest(name="married", year=2021,
             inputs={
                 "married": True,
                 "nb_children": 0,
@@ -19,7 +18,7 @@ tax_tests = [
                 "net_taxes": 6912.0
             },
             flags={}),
-    TaxTest(name="3_shares", year=2021,
+    TaxTest(name="married_2_children", year=2021,
             inputs={
                 "married": True,
                 "nb_children": 2,
@@ -33,6 +32,52 @@ tax_tests = [
             flags={
                 TaxInfoFlag.MARGINAL_TAX_RATE: "11%"
             }),
+    TaxTest(name="married_5_children", year=2022,
+            inputs={
+                "married": True,
+                "nb_children": 5,
+                "salary_1_1AJ": 50000,
+                "salary_2_1BJ": 60000
+            },
+            results={
+                "household_shares": 6,
+                "net_taxes": 4808.0
+            },
+            flags={
+            }),
+    TaxTest(name="single", year=2022,
+            inputs={
+                "married": False,
+                "nb_children": 0,
+                "salary_1_1AJ": 30000,
+            },
+            results={
+                "household_shares": 1,
+                "net_taxes": 2022.0
+            },
+            flags={}),
+    TaxTest(name="single_1_child", year=2022,
+            inputs={
+                "married": False,
+                "nb_children": 1,
+                "salary_1_1AJ": 50000,
+            },
+            results={
+                "household_shares": 1.5,
+                "net_taxes": 5830.0
+            },
+            flags={}),
+    TaxTest(name="single_5_children", year=2022,
+            inputs={
+                "married": False,
+                "nb_children": 5,
+                "salary_1_1AJ": 80000,
+            },
+            results={
+                "household_shares": 5,
+                "net_taxes": 2786.0
+            },
+            flags={}),
     TaxTest(name="family_quotient_capping", year=2021,
             inputs={
                 "married": True,
@@ -71,3 +116,15 @@ tax_tests = [
                          ids=[t.name for t in tax_tests])
 def test_tax(year, inputs, results, flags):
     tax_testing(year, inputs, results, flags)
+
+
+# ----- Useful for TDD phases, to isolate tests and debug -----
+# tax_tests_debug = [
+# ]
+#
+#
+# @pytest.mark.parametrize("year,inputs,results,flags",
+#                          [pytest.param(t.year, t.inputs, t.results, t.flags) for t in tax_tests_debug],
+#                          ids=[t.name for t in tax_tests_debug])
+# def test_tax_debug(year, inputs, results, flags):
+#     tax_testing(year, inputs, results, flags, debug=True)

@@ -23,7 +23,6 @@ This module helps filling the tax statement regarding stock acquisition or capit
 - Outputs fields 3VG/3VH for form 2042C, and frame 5 (512-524) + fields 903/913 for form 2074
 
 # Known issues
-- There is currently a problem in computing taxes for single individuals.
 - The minimum fee deduction for salaries is not taken into account
 
 # Contact and contributions

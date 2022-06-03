@@ -60,10 +60,6 @@ class TaxSimulator:
     def process_family_information(self):
         # See https://www.service-public.fr/particuliers/vosdroits/F2705 and https://www.service-public.fr/particuliers/vosdroits/F2702
         # /!\ extra half-shares and shared custody are not taken into account
-        # TODO: single individual taxation is not properly computed right now
-        if not self.state["married"]:
-            # better raising exception than reporting something wrong
-            raise Exception("Non-married situation is buggy for now")
         base_shares = 2 if self.state["married"] else 1
         nb_children_1 = min(self.state["nb_children"], 2)
         nb_children_2 = max(0, self.state["nb_children"] - nb_children_1)
@@ -130,17 +126,18 @@ class TaxSimulator:
         # TODO: there is a minimum deduction to consider (448e in 2022)
         fees_10p_ceiling = self.parameters.fees_10p_deduction_ceiling
         self.state["deduction_10p_1"] = round(min(incomes_1 * 0.1, fees_10p_ceiling))
-        self.state["deduction_10p_2"] = round(min(incomes_2 * 0.1,
-                                                  fees_10p_ceiling))
         if incomes_1 * 0.1 > fees_10p_ceiling:
             self.flags[
                 TaxInfoFlag.FEE_REBATE_INCOME_1] = f"taxable income += {round(incomes_1 * 0.1 - fees_10p_ceiling)}€"
-        if incomes_2 * 0.1 > fees_10p_ceiling:
-            self.flags[
-                TaxInfoFlag.FEE_REBATE_INCOME_2] = f"taxable income += {round(incomes_2 * 0.1 - fees_10p_ceiling)}€"
         net_income = incomes_1 - self.state["deduction_10p_1"]\
-                     + incomes_2 - self.state["deduction_10p_2"]\
                      + self.state["rental_income_result"]
+        if self.state["married"]:
+            self.state["deduction_10p_2"] = round(min(incomes_2 * 0.1,
+                                                      fees_10p_ceiling))
+            if incomes_2 * 0.1 > fees_10p_ceiling:
+                self.flags[
+                    TaxInfoFlag.FEE_REBATE_INCOME_2] = f"taxable income += {round(incomes_2 * 0.1 - fees_10p_ceiling)}€"
+            net_income += incomes_2 - self.state["deduction_10p_2"]
         self.state["total_net_income"] = net_income
 
     def compute_taxable_income(self):
@@ -208,8 +205,7 @@ class TaxSimulator:
         # apply capping of the family quotient benefices, see
         # https://www.economie.gouv.fr/particuliers/quotient-familial
         family_quotient_benefices = tax_without_family_quotient - tax_with_family_quotient
-        # TODO: this doesn't seem right after 2 children, double check
-        family_quotient_benefices_capping = capping_parameter * ((household_shares - 2) * 2)
+        family_quotient_benefices_capping = capping_parameter * ((household_shares - household_shares_without_family_quotient) * 2)
         self.maybe_print("Family quotient benefices: ", family_quotient_benefices, "  ;  Capped to: ",
                          family_quotient_benefices_capping)
         if (family_quotient_benefices > family_quotient_benefices_capping):
