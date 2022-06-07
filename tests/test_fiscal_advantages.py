@@ -160,7 +160,7 @@ tax_tests = [
                 "charity_donation_7UF": 250,
             },
             results={
-                "reference_fiscal_income": -5500,
+                "reference_fiscal_income": 0,
                 "net_taxes": 0,
                 "charity_reduction": 0
             },
@@ -193,6 +193,20 @@ tax_tests = [
             results={
                 "net_taxes": 18512,
                 "pme_subscription_reduction": 20100
+            },
+            flags={
+            }),
+    TaxTest(name="pme_capital_subscription_ceiling_single", year=2022,
+            inputs={
+                "married": False,
+                "nb_children": 0,
+                "salary_1_1AJ": 70000,
+                "pme_capital_subscription_7CF": 30000,  # 18% reduction => 180€
+                "pme_capital_subscription_7CH": 40000  # 25% reduction => 500€
+            },
+            results={
+                "net_taxes": 2822,
+                "pme_subscription_reduction": 10400
             },
             flags={
             }),
@@ -256,3 +270,14 @@ tax_exception_tests = [
 def test_tax_exception(year, inputs, message):
     with pytest.raises(Exception, match=message):
         TaxSimulator(year, inputs)
+
+# ----- Useful for TDD phases, to isolate tests and debug -----
+# tax_tests_debug = [
+# ]
+#
+#
+# @pytest.mark.parametrize("year,inputs,results,flags",
+#                          [pytest.param(t.year, t.inputs, t.results, t.flags) for t in tax_tests_debug],
+#                          ids=[t.name for t in tax_tests_debug])
+# def test_tax_debug(year, inputs, results, flags):
+#     tax_testing(year, inputs, results, flags, debug=True)

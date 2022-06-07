@@ -108,6 +108,32 @@ tax_tests = [
                 TaxInfoFlag.FEE_REBATE_INCOME_2: "taxable income += 348€",
                 TaxInfoFlag.MARGINAL_TAX_RATE: "30%"
             }),
+    TaxTest(name="fee_rebate_floor_2021", year=2021,
+            inputs={
+                "married": True,
+                "nb_children": 0,
+                "salary_1_1AJ": 4000,
+                "salary_2_1BJ": 60000
+            },
+            results={
+                "reference_fiscal_income": 57558.0,
+                "net_taxes": 5279.0,
+            },
+            flags={
+            }),
+    TaxTest(name="fee_rebate_floor_2022", year=2022,
+            inputs={
+                "married": True,
+                "nb_children": 0,
+                "salary_1_1AJ": 4000,
+                "salary_2_1BJ": 60000
+            },
+            results={
+                "reference_fiscal_income": 57552.0,
+                "net_taxes": 5110.0,
+            },
+            flags={
+            }),
 ]
 
 

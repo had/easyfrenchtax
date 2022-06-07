@@ -19,21 +19,24 @@ class TaxInfoFlag(Enum):
 TaxParameters = namedtuple("TaxParameters", [
     "family_quotient_benefices_capping",   # Source: https://www.economie.gouv.fr/particuliers/quotient-familial
     "slices_thresholds", "slices_rates",   # Source: https://www.service-public.fr/particuliers/vosdroits/F1419
-    "fees_10p_deduction_ceiling"           # Source: https://www.impots.gouv.fr/particulier/questions/comment-puis-je-beneficier-de-la-deduction-forfaitaire-de-10
+    # Source: https://www.impots.gouv.fr/particulier/questions/comment-puis-je-beneficier-de-la-deduction-forfaitaire-de-10
+    "fees_10p_deduction_ceiling", "fees_10p_deduction_floor"
 ] )
 yearly_defined_parameters = {
     2021: TaxParameters(
         family_quotient_benefices_capping=1570,
         slices_thresholds=[10084, 25710, 73516, 158122],
         slices_rates=[0.11, 0.30, 0.41, 0.45],
-        fees_10p_deduction_ceiling=12652
+        fees_10p_deduction_ceiling=12652,
+        fees_10p_deduction_floor=442
 
     ),
     2022: TaxParameters(
         family_quotient_benefices_capping=1592,
         slices_thresholds=[10225, 26070, 74545, 160336],
         slices_rates=[0.11, 0.30, 0.41, 0.45],
-        fees_10p_deduction_ceiling=12829
+        fees_10p_deduction_ceiling=12829,
+        fees_10p_deduction_floor=448
     ),
 }
 
@@ -123,27 +126,28 @@ class TaxSimulator:
         incomes_2 = self.state["salary_2_1BJ"] + self.state["exercise_gain_2_1UT"]
         # capped at 12652e (in 2021), see:
         # https://www.impots.gouv.fr/portail/particulier/questions/comment-puis-je-beneficier-de-la-deduction-forfaitaire-de-10
-        # TODO: there is a minimum deduction to consider (448e in 2022)
+        fees_10p_floor = self.parameters.fees_10p_deduction_floor
         fees_10p_ceiling = self.parameters.fees_10p_deduction_ceiling
-        self.state["deduction_10p_1"] = round(min(incomes_1 * 0.1, fees_10p_ceiling))
-        if incomes_1 * 0.1 > fees_10p_ceiling:
-            self.flags[
-                TaxInfoFlag.FEE_REBATE_INCOME_1] = f"taxable income += {round(incomes_1 * 0.1 - fees_10p_ceiling)}€"
-        net_income = incomes_1 - self.state["deduction_10p_1"]\
-                     + self.state["rental_income_result"]
+        incomes_1_10p = round(incomes_1 * 0.1)
+        fee_deduction_1 = max(min(incomes_1_10p, fees_10p_ceiling), fees_10p_floor)
+        self.state["deduction_10p_1"] = fee_deduction_1
+        if incomes_1_10p > fees_10p_ceiling:
+            tax_increment = round(incomes_1_10p - fees_10p_ceiling)
+            self.flags[TaxInfoFlag.FEE_REBATE_INCOME_1] = f"taxable income += {tax_increment}€"
+        net_income = incomes_1 - fee_deduction_1 + self.state["rental_income_result"]
         if self.state["married"]:
-            self.state["deduction_10p_2"] = round(min(incomes_2 * 0.1,
-                                                      fees_10p_ceiling))
-            if incomes_2 * 0.1 > fees_10p_ceiling:
-                self.flags[
-                    TaxInfoFlag.FEE_REBATE_INCOME_2] = f"taxable income += {round(incomes_2 * 0.1 - fees_10p_ceiling)}€"
-            net_income += incomes_2 - self.state["deduction_10p_2"]
+            incomes_2_10p = round(incomes_2 * 0.1)
+            fee_deduction_2 = max(min(incomes_2_10p, fees_10p_ceiling), fees_10p_floor)
+            self.state["deduction_10p_2"] = fee_deduction_2
+            if incomes_2_10p > fees_10p_ceiling:
+                tax_increment = round(incomes_2_10p - fees_10p_ceiling)
+                self.flags[TaxInfoFlag.FEE_REBATE_INCOME_2] = f"taxable income += {tax_increment}€"
+            net_income += incomes_2 - fee_deduction_2
         self.state["total_net_income"] = net_income
 
     def compute_taxable_income(self):
         total_per = self.state["per_transfers_1_6NS"] + self.state[
             "per_transfers_2_6NT"]  # TODO take capping into account
-        # TODO other deductible charges
         self.state["taxable_income"] = self.state["total_net_income"] - total_per
         self.state["taxable_income"] += self.state["taxable_acquisition_gain_1TZ"]  # Taxable part of RSUs
 
@@ -158,8 +162,10 @@ class TaxSimulator:
         self.state["investment_income_tax"] = round(self.state["taxable_investment_income"] * 0.128)
 
     def compute_reference_fiscal_income(self):
-        self.state["reference_fiscal_income"] = self.state["total_net_income"] + self.state["taxable_investment_income"]\
-                                                + self.state["capital_gain_3VG"]
+        self.state["reference_fiscal_income"] = max(self.state["total_net_income"]\
+                                                    + self.state["taxable_investment_income"]\
+                                                    + self.state["capital_gain_3VG"],
+                                                    0)
 
     def _compute_income_tax(self, household_shares):
         # https://www.service-public.fr/particuliers/vosdroits/F1419
@@ -244,10 +250,10 @@ class TaxSimulator:
         # Subscription to PME capital: in 2020 there are 2 segments: before and after Aug.10th (with different reduction
         # rates). See:
         # https://www.impots.gouv.fr/portail/particulier/questions/si-jinvestis-dans-une-entreprise-ai-je-droit-une-reduction-dimpot
-        # Total is capped at 100K (TODO: tune that value depending on marital state)
-        pme_capital_subscription_before = min(self.state["pme_capital_subscription_7CF"], 100000)
+        subscription_capping = 100000 if self.state["married"] else 50000
+        pme_capital_subscription_before = min(self.state["pme_capital_subscription_7CF"], subscription_capping)
         pme_capital_subscription_after = min(self.state["pme_capital_subscription_7CH"],
-                                                   100000 - pme_capital_subscription_before)
+                                                   subscription_capping - pme_capital_subscription_before)
         self.state["pme_subscription_reduction"] = pme_capital_subscription_before * 0.18\
                                                    + pme_capital_subscription_after * 0.25
 

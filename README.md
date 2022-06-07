@@ -22,8 +22,5 @@ This module helps filling the tax statement regarding stock acquisition or capit
 - Weighted average price ("Prix moyen pondéré" or PMP in French tax lingo)
 - Outputs fields 3VG/3VH for form 2042C, and frame 5 (512-524) + fields 903/913 for form 2074
 
-# Known issues
-- The minimum fee deduction for salaries is not taken into account
-
 # Contact and contributions
 If you want to chat about this project, don't hesitate to shoot an email at hadrien.hamel@gmail.com. Contributions and bug reports are welcome!

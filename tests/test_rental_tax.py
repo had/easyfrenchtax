@@ -138,7 +138,7 @@ tax_tests = [
                 "rental_income_global_deficit_4BC": 10000,
             },
             results={
-                "reference_fiscal_income": -5500,
+                "reference_fiscal_income": 0,
                 "net_taxes": 0,
                 "rental_income_result": -10000,
                 "net_social_taxes": 0,
