@@ -1,129 +1,130 @@
 import pytest
 from .common import TaxTest, tax_testing
+from src.easyfrenchtax import TaxField
 
 tax_tests = [
     TaxTest(name="capital_gain", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000,
-                "capital_gain_3VG": 20000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 30000,
+                TaxField.SALARY_2_1BJ: 40000,
+                TaxField.CAPITAL_GAIN_3VG: 20000,
             },
             results={
-                "reference_fiscal_income": 83000,
-                "net_taxes": 9472,
-                "capital_gain_tax": 2560,
-                "net_social_taxes": 3440
+                TaxField.REFERENCE_FISCAL_INCOME: 83000,
+                TaxField.NET_TAXES: 9472,
+                TaxField.CAPITAL_GAIN_TAX: 2560,
+                TaxField.NET_SOCIAL_TAXES: 3440
             },
             flags={
             }),
     TaxTest(name="capital_gain_and_tax_reductions", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 10000,
-                "salary_2_1BJ": 10000,
-                "capital_gain_3VG": 20000,
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 10000,
+                TaxField.SALARY_2_1BJ: 10000,
+                TaxField.CAPITAL_GAIN_3VG: 20000,
                 # the following is big enough to swallow income tax, but it can't reduce capital gain tax
-                "charity_donation_7UD": 30000
+                TaxField.CHARITY_DONATION_7UD: 30000,
             },
             results={
-                "net_taxes": 2560,  # tax reduction doesn't apply to capital gain tax
-                "capital_gain_tax": 2560,
-                "net_social_taxes": 3440
+                TaxField.NET_TAXES: 2560,  # tax reduction doesn't apply to capital gain tax
+                TaxField.CAPITAL_GAIN_TAX: 2560,
+                TaxField.NET_SOCIAL_TAXES: 3440,
             },
             flags={
             }),
     TaxTest(name="capital_gain_and_tax_credit", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 10000,
-                "salary_2_1BJ": 10000,
-                "capital_gain_3VG": 20000,
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 10000,
+                TaxField.SALARY_2_1BJ: 10000,
+                TaxField.CAPITAL_GAIN_3VG: 20000,
                 # the following is big enough to swallow income tax AND capital gain tax (because it's credit)
-                "home_services_7DB": 10000
+                TaxField.HOME_SERVICES_7DB: 10000,
             },
             results={
-                "net_taxes": -2440,
-                "capital_gain_tax": 2560,
-                "net_social_taxes": 3440
+                TaxField.NET_TAXES: -2440,
+                TaxField.CAPITAL_GAIN_TAX: 2560,
+                TaxField.NET_SOCIAL_TAXES: 3440,
             },
             flags={
             }),
     TaxTest(name="social_taxes_on_stock_options", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000,
-                "exercise_gain_1_1TT": 1000,
-                "exercise_gain_2_1UT": 2000,
-                "capital_gain_3VG": 4000,
-                "taxable_acquisition_gain_1TZ": 8000,
-                "acquisition_gain_rebates_1UZ": 16000,
-                "acquisition_gain_50p_rebates_1WZ": 32000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 30000,
+                TaxField.SALARY_2_1BJ: 40000,
+                TaxField.EXERCISE_GAIN_1_1TT: 1000,
+                TaxField.EXERCISE_GAIN_2_1UT: 2000,
+                TaxField.CAPITAL_GAIN_3VG: 4000,
+                TaxField.TAXABLE_ACQUISITION_GAIN_1TZ: 8000,
+                TaxField.ACQUISITION_GAIN_REBATES_1UZ: 16000,
+                TaxField.ACQUISITION_GAIN_50P_REBATES_1WZ: 32000,
             },
             results={
-                "net_taxes": 10634,
-                "net_social_taxes": 10911
+                TaxField.NET_TAXES: 10634,
+                TaxField.NET_SOCIAL_TAXES: 10911,
             },
             flags={
             }),
     TaxTest(name="fixed_income_investments", year=2022,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000,
-                "fixed_income_interests_2TR": 150,
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 30000,
+                TaxField.SALARY_2_1BJ: 40000,
+                TaxField.FIXED_INCOME_INTERESTS_2TR: 150,
             },
             results={
-                "reference_fiscal_income": 63150,
-                "simple_tax_right": 6744,
-                "investment_income_tax": 19,
-                "net_taxes": 6763,
-                "net_social_taxes": 26
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 30000,
+                TaxField.SALARY_2_1BJ: 40000,
+                TaxField.FIXED_INCOME_INTERESTS_2TR: 150
             },
             flags={
             }),
     TaxTest(name="fixed_income_investments_already_taxed", year=2022,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000,
-                "fixed_income_interests_2TR": 200,
-                "fixed_income_interests_already_taxed_2BH": 100,
-                "interest_tax_already_paid_2CK": 15
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 30000,
+                TaxField.SALARY_2_1BJ: 40000,
+                TaxField.FIXED_INCOME_INTERESTS_2TR: 200,
+                TaxField.FIXED_INCOME_INTERESTS_ALREADY_TAXED_2BH: 100,
+                TaxField.INTEREST_TAX_ALREADY_PAID_2CK: 15,
             },
             results={
-                "reference_fiscal_income": 63200,
-                "simple_tax_right": 6744,
-                "investment_income_tax": 26,
-                "net_taxes": 6755,
-                "net_social_taxes": 18
+                TaxField.REFERENCE_FISCAL_INCOME: 63200,
+                TaxField.SIMPLE_TAX_RIGHT: 6744,
+                TaxField.INVESTMENT_INCOME_TAX: 26,
+                TaxField.NET_TAXES: 6755,
+                TaxField.NET_SOCIAL_TAXES: 18,
             },
             flags={
             }),
     TaxTest(name="partial_tax_and_global_capping", year=2022,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 70000,
-                "salary_2_1BJ": 80000,
-                "pme_capital_subscription_7CH": 50000,
-                "fixed_income_interests_2TR": 200,
-                "fixed_income_interests_already_taxed_2BH": 100,
-                "interest_tax_already_paid_2CK": 15
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 70000,
+                TaxField.SALARY_2_1BJ: 80000,
+                TaxField.SME_CAPITAL_SUBSCRIPTION_7CH: 50000,
+                TaxField.FIXED_INCOME_INTERESTS_2TR: 200,
+                TaxField.FIXED_INCOME_INTERESTS_ALREADY_TAXED_2BH: 100,
+                TaxField.INTEREST_TAX_ALREADY_PAID_2CK: 15
             },
             results={
-                "reference_fiscal_income": 135200,
-                "simple_tax_right": 28344,
-                "investment_income_tax": 26,
-                "net_taxes": 18355,
-                "net_social_taxes": 18
+                TaxField.REFERENCE_FISCAL_INCOME: 135200,
+                TaxField.SIMPLE_TAX_RIGHT: 28344,
+                TaxField.INVESTMENT_INCOME_TAX: 26,
+                TaxField.NET_TAXES: 18355,
+                TaxField.NET_SOCIAL_TAXES: 18
             },
             flags={
             }),

@@ -1,2 +1,2 @@
 from .stock_helper import StockHelper
-from .tax_simulator import TaxSimulator, TaxInfoFlag
+from .tax_simulator import TaxSimulator, TaxField, TaxInfoFlag

@@ -1,37 +1,37 @@
 import pytest
 import re
-from src.easyfrenchtax import TaxInfoFlag, TaxSimulator
+from src.easyfrenchtax import TaxInfoFlag, TaxField, TaxSimulator
 from .common import TaxTest, TaxExceptionTest, tax_testing
 
 tax_tests = [
     TaxTest(name="per_deduction", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000,
-                "per_transfers_1_6NS": 4000,
-                "per_transfers_2_6NT": 6000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 30000,
+                TaxField.SALARY_2_1BJ: 40000,
+                TaxField.PER_TRANSFERS_1_6NS: 4000,
+                TaxField.PER_TRANSFERS_2_6NT: 6000,
             },
             results={
-                "net_taxes": 3912.0,
+                TaxField.NET_TAXES: 3912.0,
             },
             flags={
                 TaxInfoFlag.MARGINAL_TAX_RATE: "30%"
             }),
     TaxTest(name="children_daycare_credit", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 2,
-                "child_1_birthyear": 2020,
-                "child_2_birthyear": 2010,
-                "salary_1_1AJ": 10000,
-                "salary_2_1BJ": 10000,
-                "children_daycare_fees_7GA": 2500
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 2,
+                TaxField.CHILD_1_BIRTHYEAR: 2020,
+                TaxField.CHILD_2_BIRTHYEAR: 2010,
+                TaxField.SALARY_1_1AJ: 10000,
+                TaxField.SALARY_2_1BJ: 10000,
+                TaxField.CHILDREN_DAYCARE_FEES_7GA: 2500,
             },
             results={
-                "household_shares": 3,
-                "net_taxes": -1150.0,
+                TaxField.HOUSEHOLD_SHARES: 3,
+                TaxField.NET_TAXES: -1150.0,
             },
             flags={
                 TaxInfoFlag.MARGINAL_TAX_RATE: "0%",
@@ -39,18 +39,18 @@ tax_tests = [
             }),
     TaxTest(name="children_daycare_credit_capped_per_child", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 2,
-                "child_1_birthyear": 2020,
-                "child_2_birthyear": 2018,
-                "salary_1_1AJ": 10000,
-                "salary_2_1BJ": 10000,
-                "children_daycare_fees_7GA": 2500,
-                "children_daycare_fees_7GB": 2000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 2,
+                TaxField.CHILD_1_BIRTHYEAR: 2020,
+                TaxField.CHILD_2_BIRTHYEAR: 2018,
+                TaxField.SALARY_1_1AJ: 10000,
+                TaxField.SALARY_2_1BJ: 10000,
+                TaxField.CHILDREN_DAYCARE_FEES_7GA: 2500,
+                TaxField.CHILDREN_DAYCARE_FEES_7GB: 2000,
             },
             results={
-                "household_shares": 3,
-                "net_taxes": -2150.0,
+                TaxField.HOUSEHOLD_SHARES: 3,
+                TaxField.NET_TAXES: -2150.0,
             },
             flags={
                 TaxInfoFlag.MARGINAL_TAX_RATE: "0%",
@@ -58,14 +58,14 @@ tax_tests = [
             }),
     TaxTest(name="home_services_credit", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 1,
-                "salary_1_1AJ": 10000,
-                "salary_2_1BJ": 10000,
-                "home_services_7DB": 14000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 1,
+                TaxField.SALARY_1_1AJ: 10000,
+                TaxField.SALARY_2_1BJ: 10000,
+                TaxField.HOME_SERVICES_7DB: 14000,
             },
             results={
-                "net_taxes": -6750.0,
+                TaxField.NET_TAXES: -6750.0,
             },
             flags={
                 TaxInfoFlag.MARGINAL_TAX_RATE: "0%",
@@ -73,14 +73,14 @@ tax_tests = [
             }),
     TaxTest(name="home_services_credit_2", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 3,
-                "salary_1_1AJ": 10000,
-                "salary_2_1BJ": 10000,
-                "home_services_7DB": 16000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 3,
+                TaxField.SALARY_1_1AJ: 10000,
+                TaxField.SALARY_2_1BJ: 10000,
+                TaxField.HOME_SERVICES_7DB: 16000,
             },
             results={
-                "net_taxes": -7500.0,
+                TaxField.NET_TAXES: -7500.0,
             },
             flags={
                 TaxInfoFlag.MARGINAL_TAX_RATE: "0%",
@@ -89,46 +89,46 @@ tax_tests = [
             }),
     TaxTest(name="charity_reduction_no_credit", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 3,
-                "salary_1_1AJ": 10000,
-                "salary_2_1BJ": 10000,
-                "charity_donation_7UD": 500
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 3,
+                TaxField.SALARY_1_1AJ: 10000,
+                TaxField.SALARY_2_1BJ: 10000,
+                TaxField.CHARITY_DONATION_7UD: 500,
             },
             results={
-                "household_shares": 4,
-                "net_taxes": 0,  # reduction is not credit
+                TaxField.HOUSEHOLD_SHARES: 4,
+                TaxField.NET_TAXES: 0  # reduction is not credit
             },
             flags={
                 TaxInfoFlag.CHARITY_75P: "500€",
             }),
     TaxTest(name="charity_reduction_75p", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000,
-                "charity_donation_7UD": 500
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 30000,
+                TaxField.SALARY_2_1BJ: 40000,
+                TaxField.CHARITY_DONATION_7UD: 500,
             },
             results={
-                "net_taxes": 6537,
-                "charity_reduction": 375
+                TaxField.NET_TAXES: 6537,
+                TaxField.CHARITY_REDUCTION: 375,
             },
             flags={
                 TaxInfoFlag.CHARITY_75P: "500€",
             }),
     TaxTest(name="charity_reduction_66p", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000,
-                "charity_donation_7UD": 1250,
-                "charity_donation_7UF": 250,
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 30000,
+                TaxField.SALARY_2_1BJ: 40000,
+                TaxField.CHARITY_DONATION_7UD: 1250,
+                TaxField.CHARITY_DONATION_7UF: 250,
             },
             results={
-                "net_taxes": 5832,
-                "charity_reduction": 1080
+                TaxField.NET_TAXES: 5832,
+                TaxField.CHARITY_REDUCTION: 1080,
             },
             flags={
                 TaxInfoFlag.CHARITY_75P: "1000€ (capped)",
@@ -136,15 +136,15 @@ tax_tests = [
             }),
     TaxTest(name="charity_reduction_ceiling", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 70000,
-                "salary_2_1BJ": 80000,
-                "charity_donation_7UD": 30000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 70000,
+                TaxField.SALARY_2_1BJ: 80000,
+                TaxField.CHARITY_DONATION_7UD: 30000,
             },
             results={
-                "net_taxes": 9942,
-                "charity_reduction": 18570
+                TaxField.NET_TAXES: 9942,
+                TaxField.CHARITY_REDUCTION: 18570
             },
             flags={
                 TaxInfoFlag.CHARITY_75P: "1000€ (capped)",
@@ -152,91 +152,91 @@ tax_tests = [
             }),
     TaxTest(name="charity_reduction_negative_income", year=2022,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 5000,
-                "salary_2_1BJ": 0,
-                "rental_income_global_deficit_4BC": 10000,
-                "charity_donation_7UF": 250,
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 5000,
+                TaxField.SALARY_2_1BJ: 0,
+                TaxField.RENTAL_INCOME_GLOBAL_DEFICIT_4BC: 10000,
+                TaxField.CHARITY_DONATION_7UF: 250,
             },
             results={
-                "reference_fiscal_income": 0,
-                "net_taxes": 0,
-                "charity_reduction": 0
+                TaxField.REFERENCE_FISCAL_INCOME: 0,
+                TaxField.NET_TAXES: 0,
+                TaxField.CHARITY_REDUCTION: 0,
             },
             flags={
             }),
-    TaxTest(name="pme_capital_subscription", year=2021,
+    TaxTest(name="sme_capital_subscription", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000,
-                "pme_capital_subscription_7CF": 1000,  # 18% reduction => 180€
-                "pme_capital_subscription_7CH": 2000  # 25% reduction => 500€
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 30000,
+                TaxField.SALARY_2_1BJ: 40000,
+                TaxField.SME_CAPITAL_SUBSCRIPTION_7CF: 1000,   # 18% reduction => 180€
+                TaxField.SME_CAPITAL_SUBSCRIPTION_7CH: 2000,   # 25% reduction => 500€
             },
             results={
-                "net_taxes": 6232,
-                "pme_subscription_reduction": 680
+                TaxField.NET_TAXES: 6232,
+                TaxField.SME_SUBSCRIPTION_REDUCTION: 680,
             },
             flags={
             }),
-    TaxTest(name="pme_capital_subscription_ceiling", year=2021,
+    TaxTest(name="sme_capital_subscription_ceiling", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 70000,
-                "salary_2_1BJ": 80000,
-                "pme_capital_subscription_7CF": 70000,  # 18% reduction => 180€
-                "pme_capital_subscription_7CH": 50000  # 25% reduction => 500€
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 70000,
+                TaxField.SALARY_2_1BJ: 80000,
+                TaxField.SME_CAPITAL_SUBSCRIPTION_7CF: 70000,
+                TaxField.SME_CAPITAL_SUBSCRIPTION_7CH: 50000,
             },
             results={
-                "net_taxes": 18512,
-                "pme_subscription_reduction": 20100
+                TaxField.NET_TAXES: 18512,
+                TaxField.SME_SUBSCRIPTION_REDUCTION: 20100,
             },
             flags={
             }),
-    TaxTest(name="pme_capital_subscription_ceiling_single", year=2022,
+    TaxTest(name="sme_capital_subscription_ceiling_single", year=2022,
             inputs={
-                "married": False,
-                "nb_children": 0,
-                "salary_1_1AJ": 70000,
-                "pme_capital_subscription_7CF": 30000,  # 18% reduction => 180€
-                "pme_capital_subscription_7CH": 40000  # 25% reduction => 500€
+                TaxField.MARRIED: False,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 70000,
+                TaxField.SME_CAPITAL_SUBSCRIPTION_7CF: 30000,
+                TaxField.SME_CAPITAL_SUBSCRIPTION_7CH: 40000,
             },
             results={
-                "net_taxes": 2822,
-                "pme_subscription_reduction": 10400
+                TaxField.NET_TAXES: 2822,
+                TaxField.SME_SUBSCRIPTION_REDUCTION: 10400,
             },
             flags={
             }),
     TaxTest(name="global_fiscal_advantages_capping_1", year=2022,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 70000,
-                "salary_2_1BJ": 80000,
-                "pme_capital_subscription_7CH": 50000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 70000,
+                TaxField.SALARY_2_1BJ: 80000,
+                TaxField.SME_CAPITAL_SUBSCRIPTION_7CH: 50000,
             },
             results={
-                "net_taxes": 18344,
+                TaxField.NET_TAXES: 18344,
             },
             flags={
                 TaxInfoFlag.GLOBAL_FISCAL_ADVANTAGES: "capped to 10'000€ (originally 12500.0€)",
             }),
     TaxTest(name="global_fiscal_advantages_capping_2", year=2022,
             inputs={
-                "married": True,
-                "nb_children": 1,
-                "child_1_birthyear": 2020,
-                "salary_1_1AJ": 70000,
-                "salary_2_1BJ": 80000,
-                "pme_capital_subscription_7CH": 35000,
-                "children_daycare_fees_7GA": 2500,
-                "home_services_7DB": 5000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 1,
+                TaxField.CHILD_1_BIRTHYEAR: 2020,
+                TaxField.SALARY_1_1AJ: 70000,
+                TaxField.SALARY_2_1BJ: 80000,
+                TaxField.SME_CAPITAL_SUBSCRIPTION_7CH: 35000,
+                TaxField.CHILDREN_DAYCARE_FEES_7GA: 2500,
+                TaxField.HOME_SERVICES_7DB: 5000,
             },
             results={
-                "net_taxes": 16752,
+                TaxField.NET_TAXES: 16752,
             },
             flags={
                 TaxInfoFlag.GLOBAL_FISCAL_ADVANTAGES: "capped to 10'000€ (originally 12400.0€)",
@@ -254,12 +254,12 @@ def test_tax(year, inputs, results, flags):
 tax_exception_tests = [
     TaxExceptionTest(name="children_daycare_credit_too_old", year=2021,
                      inputs={
-                         "married": True,
-                         "nb_children": 1,
-                         "child_1_birthyear": 2010,
-                         "salary_1_1AJ": 10000,
-                         "salary_2_1BJ": 10000,
-                         "children_daycare_fees_7GA": 2500
+                        TaxField.MARRIED: True,
+                        TaxField.NB_CHILDREN: 1,
+                        TaxField.CHILD_1_BIRTHYEAR: 2010,
+                        TaxField.SALARY_1_1AJ: 10000,
+                        TaxField.SALARY_2_1BJ: 10000,
+                        TaxField.CHILDREN_DAYCARE_FEES_7GA: 2500,
                      },
                      message=re.escape("You are declaring more children daycare fees than you have children below 6y old")),
 ]

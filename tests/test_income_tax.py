@@ -1,5 +1,5 @@
 import pytest
-from src.easyfrenchtax import TaxInfoFlag
+from src.easyfrenchtax import TaxInfoFlag, TaxField
 from .common import TaxTest, tax_testing
 
 # NOTE: all tests value have been checked against the official french tax simulator:
@@ -8,85 +8,85 @@ from .common import TaxTest, tax_testing
 tax_tests = [
     TaxTest(name="married", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
-                "salary_2_1BJ": 40000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 30000,
+                TaxField.SALARY_2_1BJ: 40000,
             },
             results={
-                "household_shares": 2,
-                "net_taxes": 6912.0
+                TaxField.HOUSEHOLD_SHARES: 2,
+                TaxField.NET_TAXES: 6912.0,
             },
             flags={}),
     TaxTest(name="married_2_children", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 2,
-                "salary_1_1AJ": 28000,
-                "salary_2_1BJ": 35000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 2,
+                TaxField.SALARY_1_1AJ: 28000,
+                TaxField.SALARY_2_1BJ: 35000,
             },
             results={
-                "household_shares": 3,
-                "net_taxes": 2909.0
+                TaxField.HOUSEHOLD_SHARES: 3,
+                TaxField.NET_TAXES: 2909.0,
             },
             flags={
                 TaxInfoFlag.MARGINAL_TAX_RATE: "11%"
             }),
     TaxTest(name="married_5_children", year=2022,
             inputs={
-                "married": True,
-                "nb_children": 5,
-                "salary_1_1AJ": 50000,
-                "salary_2_1BJ": 60000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 5,
+                TaxField.SALARY_1_1AJ: 50000,
+                TaxField.SALARY_2_1BJ: 60000,
             },
             results={
-                "household_shares": 6,
-                "net_taxes": 4808.0
+                TaxField.HOUSEHOLD_SHARES: 6,
+                TaxField.NET_TAXES: 4808.0,
             },
             flags={
             }),
     TaxTest(name="single", year=2022,
             inputs={
-                "married": False,
-                "nb_children": 0,
-                "salary_1_1AJ": 30000,
+                TaxField.MARRIED: False,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 30000,
             },
             results={
-                "household_shares": 1,
-                "net_taxes": 2022.0
+                TaxField.HOUSEHOLD_SHARES: 1,
+                TaxField.NET_TAXES: 2022.0,
             },
             flags={}),
     TaxTest(name="single_1_child", year=2022,
             inputs={
-                "married": False,
-                "nb_children": 1,
-                "salary_1_1AJ": 50000,
+                TaxField.MARRIED: False,
+                TaxField.NB_CHILDREN: 1,
+                TaxField.SALARY_1_1AJ: 50000,
             },
             results={
-                "household_shares": 1.5,
-                "net_taxes": 5830.0
+                TaxField.HOUSEHOLD_SHARES: 1.5,
+                TaxField.NET_TAXES: 5830.0,
             },
             flags={}),
     TaxTest(name="single_5_children", year=2022,
             inputs={
-                "married": False,
-                "nb_children": 5,
-                "salary_1_1AJ": 80000,
+                TaxField.MARRIED: False,
+                TaxField.NB_CHILDREN: 5,
+                TaxField.SALARY_1_1AJ: 80000,
             },
             results={
-                "household_shares": 5,
-                "net_taxes": 2786.0
+                TaxField.HOUSEHOLD_SHARES: 5,
+                TaxField.NET_TAXES: 2786.0,
             },
             flags={}),
     TaxTest(name="family_quotient_capping", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 2,
-                "salary_1_1AJ": 35000,
-                "salary_2_1BJ": 48000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 2,
+                TaxField.SALARY_1_1AJ: 35000,
+                TaxField.SALARY_2_1BJ: 48000,
             },
             results={
-                "net_taxes": 7282.0
+                TaxField.NET_TAXES: 7282.0,
             },
             flags={
                 TaxInfoFlag.FAMILY_QUOTIENT_CAPPING: "tax += 2392.44€",
@@ -94,15 +94,15 @@ tax_tests = [
             }),
     TaxTest(name="fee_rebate_capping", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 10000,
-                "salary_2_1BJ": 130000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 10000,
+                TaxField.SALARY_2_1BJ: 130000,
             },
             results={
-                "net_taxes": 25916.0,
-                "deduction_10p_2": 12652,
-                "taxable_income": 126348
+                TaxField.NET_TAXES: 25916.0,
+                TaxField.DEDUCTION_10P_2: 12652,
+                TaxField.TAXABLE_INCOME: 126348,
             },
             flags={
                 TaxInfoFlag.FEE_REBATE_INCOME_2: "taxable income += 348€",
@@ -110,27 +110,27 @@ tax_tests = [
             }),
     TaxTest(name="fee_rebate_floor_2021", year=2021,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 4000,
-                "salary_2_1BJ": 60000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 4000,
+                TaxField.SALARY_2_1BJ: 60000,
             },
             results={
-                "reference_fiscal_income": 57558.0,
-                "net_taxes": 5279.0,
+                TaxField.REFERENCE_FISCAL_INCOME: 57558.0,
+                TaxField.NET_TAXES: 5279.0,
             },
             flags={
             }),
     TaxTest(name="fee_rebate_floor_2022", year=2022,
             inputs={
-                "married": True,
-                "nb_children": 0,
-                "salary_1_1AJ": 4000,
-                "salary_2_1BJ": 60000
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 4000,
+                TaxField.SALARY_2_1BJ: 60000,
             },
             results={
-                "reference_fiscal_income": 57552.0,
-                "net_taxes": 5110.0,
+                TaxField.REFERENCE_FISCAL_INCOME: 57552.0,
+                TaxField.NET_TAXES: 5110.0,
             },
             flags={
             }),

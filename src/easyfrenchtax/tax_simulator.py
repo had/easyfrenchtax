@@ -14,15 +14,81 @@ class TaxInfoFlag(Enum):
     CHARITY_66P = "Charity donation resulting in 66% reduction"
     RENTAL_DEFICIT_CARRYOVER = "Rental income deficit to carry-over next years"
 
+class TaxField(Enum):
+# Input fields
+    MARRIED = "married"
+    NB_CHILDREN = "nb_children"
+    CHILD_1_BIRTHYEAR = "child_1_birthyear"
+    CHILD_2_BIRTHYEAR = "child_2_birthyear"
+    CHILD_3_BIRTHYEAR = "child_3_birthyear"
+    CHILD_4_BIRTHYEAR = "child_4_birthyear"
+    CHILD_5_BIRTHYEAR = "child_5_birthyear"
+    CHILD_6_BIRTHYEAR = "child_6_birthyear"
+    SALARY_1_1AJ = "salary_1_1AJ"
+    SALARY_2_1BJ = "salary_2_1BJ"
+    EXERCISE_GAIN_1_1TT = "exercise_gain_1_1TT"
+    EXERCISE_GAIN_2_1UT = "exercise_gain_2_1UT"
+    TAXABLE_ACQUISITION_GAIN_1TZ = "taxable_acquisition_gain_1TZ"
+    ACQUISITION_GAIN_REBATES_1UZ = "acquisition_gain_rebates_1UZ"
+    ACQUISITION_GAIN_50P_REBATES_1WZ = "acquisition_gain_50p_rebates_1WZ"
+    FIXED_INCOME_INTERESTS_ALREADY_TAXED_2BH = "fixed_income_interests_already_taxed_2BH"
+    FIXED_INCOME_INTERESTS_2TR = "fixed_income_interests_2TR"
+    INTEREST_TAX_ALREADY_PAID_2CK = "interest_tax_already_paid_2CK"
+    CAPITAL_GAIN_3VG = "capital_gain_3VG"
+    REAL_RENTAL_PROFIT_4BA = "real_rental_profit_4BA"
+    REAL_RENTAL_INCOME_DEFICIT_4BB = "real_rental_income_deficit_4BB"
+    RENTAL_INCOME_GLOBAL_DEFICIT_4BC = "rental_income_global_deficit_4BC"
+    PREVIOUS_RENTAL_INCOME_DEFICIT_4BD = "previous_rental_income_deficit_4BD"
+    SIMPLIFIED_RENTAL_INCOME_4BE = "simplified_rental_income_4BE"
+    PER_TRANSFERS_1_6NS = "per_transfers_1_6NS"
+    PER_TRANSFERS_2_6NT = "per_transfers_2_6NT"
+    SME_CAPITAL_SUBSCRIPTION_7CF = "sme_capital_subscription_7CF"
+    SME_CAPITAL_SUBSCRIPTION_7CH = "sme_capital_subscription_7CH"
+    HOME_SERVICES_7DB = "home_services_7DB"
+    CHILDREN_DAYCARE_FEES_7GA = "children_daycare_fees_7GA"
+    CHILDREN_DAYCARE_FEES_7GB = "children_daycare_fees_7GB"
+    CHILDREN_DAYCARE_FEES_7GC = "children_daycare_fees_7GC"
+    CHILDREN_DAYCARE_FEES_7GD = "children_daycare_fees_7GD"
+    CHILDREN_DAYCARE_FEES_7GE = "children_daycare_fees_7GE"
+    CHILDREN_DAYCARE_FEES_7GF = "children_daycare_fees_7GF"
+    CHILDREN_DAYCARE_FEES_7GG = "children_daycare_fees_7GG"
+    CHARITY_DONATION_7UD = "charity_donation_7UD"
+    CHARITY_DONATION_7UF = "charity_donation_7UF"
+# Intermediate results
+    NB_CHILDREN_LT_6YO = "nb_children_lt_6yo"
+    RENTAL_INCOME_RESULT = "rental_income_result"
+    DEDUCTION_10P_1 = "deduction_10p_1"
+    DEDUCTION_10P_2 = "deduction_10p_2"
+    TAXABLE_INVESTMENT_INCOME = "taxable_investment_income"
+    INVESTMENT_INCOME_TAX = "investment_income_tax"
+    SIMPLE_TAX_RIGHT = "simple_tax_right"
+    TAX_BEFORE_REDUCTIONS = "tax_before_reductions"
+    CHARITY_REDUCTION = "charity_reduction"
+    SME_SUBSCRIPTION_REDUCTION = "sme_subscription_reduction"
+    CHILDREN_DAYCARE_TAXCREDIT = "children_daycare_taxcredit"
+    HOME_SERVICES_TAXCREDIT = "home_services_taxcredit"
+    CAPITAL_GAIN_TAX = "capital_gain_tax"
+# Output fields
+    YEAR = "year"
+    HOUSEHOLD_SHARES = "household_shares"
+    RENTAL_DEFICIT_CARRYOVER = "rental_deficit_carryover"
+    TOTAL_NET_INCOME = "total_net_income"
+    TAXABLE_INCOME = "taxable_income"
+    REFERENCE_FISCAL_INCOME = "reference_fiscal_income"
+    NET_TAXES = "net_taxes"
+    NET_SOCIAL_TAXES = "net_social_taxes"
+
 # Lots of parameters evolve year after year (inflation, political decisions, etc.)
 # This dictionary gathers all variable parameters.
 TaxParameters = namedtuple("TaxParameters", [
-    "family_quotient_benefices_capping",   # Source: https://www.economie.gouv.fr/particuliers/quotient-familial
-    "slices_thresholds", "slices_rates",   # Source: https://www.service-public.fr/particuliers/vosdroits/F1419
+    # Source: https://www.economie.gouv.fr/particuliers/quotient-familial
+    "family_quotient_benefices_capping",
+    # Source: https://www.service-public.fr/particuliers/vosdroits/F1419
+    "slices_thresholds", "slices_rates",
     # Source: https://www.impots.gouv.fr/particulier/questions/comment-puis-je-beneficier-de-la-deduction-forfaitaire-de-10
     "fees_10p_deduction_ceiling", "fees_10p_deduction_floor"
 ] )
-yearly_defined_parameters = {
+year_tax_parameters = {
     2021: TaxParameters(
         family_quotient_benefices_capping=1570,
         slices_thresholds=[10084, 25710, 73516, 158122],
@@ -42,11 +108,11 @@ yearly_defined_parameters = {
 
 class TaxSimulator:
     def __init__(self, statement_year, tax_input, debug=False):
-        self.parameters = yearly_defined_parameters[statement_year]
+        self.parameters = year_tax_parameters[statement_year]
         self.flags = {}
         self.debug = debug
         self.state = defaultdict(int, tax_input)
-        self.state["year"] = statement_year
+        self.state[TaxField.YEAR] = statement_year
         self.process_family_information()
         self.compute_rental_income()
         self.compute_net_income()
@@ -63,19 +129,23 @@ class TaxSimulator:
     def process_family_information(self):
         # See https://www.service-public.fr/particuliers/vosdroits/F2705 and https://www.service-public.fr/particuliers/vosdroits/F2702
         # /!\ extra half-shares and shared custody are not taken into account
-        base_shares = 2 if self.state["married"] else 1
-        nb_children_1 = min(self.state["nb_children"], 2)
-        nb_children_2 = max(0, self.state["nb_children"] - nb_children_1)
-        self.state["household_shares"] = base_shares + nb_children_1 * 0.5 + nb_children_2
+        base_shares = 2 if self.state[TaxField.MARRIED] else 1
+        nb_children_1 = min(self.state[TaxField.NB_CHILDREN], 2)
+        nb_children_2 = max(0, self.state[TaxField.NB_CHILDREN] - nb_children_1)
+        self.state[TaxField.HOUSEHOLD_SHARES] = base_shares + nb_children_1 * 0.5 + nb_children_2
         # counting children aged less than 6 years old
         nb_children_lt_6yo = 0
-        for i in range(1,6):
-            child_birthyear_key = f"child_{i}_birthyear"
+        for child_birthyear_key in [TaxField.CHILD_1_BIRTHYEAR,
+                                    TaxField.CHILD_2_BIRTHYEAR,
+                                    TaxField.CHILD_3_BIRTHYEAR,
+                                    TaxField.CHILD_4_BIRTHYEAR,
+                                    TaxField.CHILD_5_BIRTHYEAR,
+                                    TaxField.CHILD_6_BIRTHYEAR]:
             if child_birthyear_key in self.state:
                 # counting from year-1, (i.e. if declaring in 2022, checking age on Jan 1st 2021)
-                if self.state["year"] - 1 - self.state[child_birthyear_key] <= 6:
+                if self.state[TaxField.YEAR] - 1 - self.state[child_birthyear_key] <= 6:
                     nb_children_lt_6yo += 1
-        self.state["nb_children_lt_6yo"] = nb_children_lt_6yo
+        self.state[TaxField.NB_CHILDREN_LT_6YO] = nb_children_lt_6yo
 
     def compute_rental_income(self):
         # French tax system considers only non-furnished apartments to be "rental income". Furnished apartments are
@@ -92,11 +162,11 @@ class TaxSimulator:
         #          https://www.impots.gouv.fr/sites/default/files/media/3_Documentation/depliants/nid_4009_gp_172.pdf
         # NOT SUPPORTED: income from foreign countries (4BK and 4BL)
 
-        simplified_income_reporting = self.state["simplified_rental_income_4BE"]
-        net_profit = self.state["real_rental_profit_4BA"]
-        deficit = self.state["real_rental_income_deficit_4BB"]
-        global_deficit = self.state["rental_income_global_deficit_4BC"]
-        previous_deficit = self.state["previous_rental_income_deficit_4BD"]
+        simplified_income_reporting = self.state[TaxField.SIMPLIFIED_RENTAL_INCOME_4BE]
+        net_profit = self.state[TaxField.REAL_RENTAL_PROFIT_4BA]
+        deficit = self.state[TaxField.REAL_RENTAL_INCOME_DEFICIT_4BB]
+        global_deficit = self.state[TaxField.RENTAL_INCOME_GLOBAL_DEFICIT_4BC]
+        previous_deficit = self.state[TaxField.PREVIOUS_RENTAL_INCOME_DEFICIT_4BD]
 
         if simplified_income_reporting:
             if net_profit or deficit or global_deficit or previous_deficit:
@@ -116,40 +186,40 @@ class TaxSimulator:
             final_net_profit = -global_deficit
             final_deficit_carryover = deficit + previous_deficit
 
-        self.state["rental_income_result"] = final_net_profit
+        self.state[TaxField.RENTAL_INCOME_RESULT] = final_net_profit
         if final_deficit_carryover:
-            self.state["rental_deficit_carryover"] = final_deficit_carryover
+            self.state[TaxField.RENTAL_DEFICIT_CARRYOVER] = final_deficit_carryover
             self.flags[TaxInfoFlag.RENTAL_DEFICIT_CARRYOVER] = f"{final_deficit_carryover}€"
 
     def compute_net_income(self):
-        incomes_1 = self.state["salary_1_1AJ"] + self.state["exercise_gain_1_1TT"]
-        incomes_2 = self.state["salary_2_1BJ"] + self.state["exercise_gain_2_1UT"]
+        incomes_1 = self.state[TaxField.SALARY_1_1AJ] + self.state[TaxField.EXERCISE_GAIN_1_1TT]
+        incomes_2 = self.state[TaxField.SALARY_2_1BJ] + self.state[TaxField.EXERCISE_GAIN_2_1UT]
         # capped at 12652e (in 2021), see:
         # https://www.impots.gouv.fr/portail/particulier/questions/comment-puis-je-beneficier-de-la-deduction-forfaitaire-de-10
         fees_10p_floor = self.parameters.fees_10p_deduction_floor
         fees_10p_ceiling = self.parameters.fees_10p_deduction_ceiling
         incomes_1_10p = round(incomes_1 * 0.1)
         fee_deduction_1 = max(min(incomes_1_10p, fees_10p_ceiling), fees_10p_floor)
-        self.state["deduction_10p_1"] = fee_deduction_1
+        self.state[TaxField.DEDUCTION_10P_1] = fee_deduction_1
         if incomes_1_10p > fees_10p_ceiling:
             tax_increment = round(incomes_1_10p - fees_10p_ceiling)
             self.flags[TaxInfoFlag.FEE_REBATE_INCOME_1] = f"taxable income += {tax_increment}€"
-        net_income = incomes_1 - fee_deduction_1 + self.state["rental_income_result"]
-        if self.state["married"]:
+        net_income = incomes_1 - fee_deduction_1
+        if self.state[TaxField.MARRIED]:
             incomes_2_10p = round(incomes_2 * 0.1)
             fee_deduction_2 = max(min(incomes_2_10p, fees_10p_ceiling), fees_10p_floor)
-            self.state["deduction_10p_2"] = fee_deduction_2
+            self.state[TaxField.DEDUCTION_10P_2] = fee_deduction_2
             if incomes_2_10p > fees_10p_ceiling:
                 tax_increment = round(incomes_2_10p - fees_10p_ceiling)
                 self.flags[TaxInfoFlag.FEE_REBATE_INCOME_2] = f"taxable income += {tax_increment}€"
             net_income += incomes_2 - fee_deduction_2
-        self.state["total_net_income"] = net_income
+        self.state[TaxField.TOTAL_NET_INCOME] = net_income + self.state[TaxField.RENTAL_INCOME_RESULT]
 
     def compute_taxable_income(self):
-        total_per = self.state["per_transfers_1_6NS"] + self.state[
-            "per_transfers_2_6NT"]  # TODO take capping into account
-        self.state["taxable_income"] = self.state["total_net_income"] - total_per
-        self.state["taxable_income"] += self.state["taxable_acquisition_gain_1TZ"]  # Taxable part of RSUs
+        # TODO take capping into account
+        total_per = self.state[TaxField.PER_TRANSFERS_1_6NS] + self.state[TaxField.PER_TRANSFERS_2_6NT]
+        self.state[TaxField.TAXABLE_INCOME] = self.state[TaxField.TOTAL_NET_INCOME] - total_per
+        self.state[TaxField.TAXABLE_INCOME] += self.state[TaxField.TAXABLE_ACQUISITION_GAIN_1TZ]  # Taxable part of RSUs
 
     def maybe_print(self, *args):
         if self.debug:
@@ -158,20 +228,20 @@ class TaxSimulator:
     def compute_flat_rate_taxes(self):
         # supporting 2TR only for now
         # TODO: support others (2DC, 2FU, 2TS, 2TT, 2WW, 2ZZ, 2TQ, 2TZ)
-        self.state["taxable_investment_income"] = self.state["fixed_income_interests_2TR"]
-        self.state["investment_income_tax"] = round(self.state["taxable_investment_income"] * 0.128)
+        self.state[TaxField.TAXABLE_INVESTMENT_INCOME] = self.state[TaxField.FIXED_INCOME_INTERESTS_2TR]
+        self.state[TaxField.INVESTMENT_INCOME_TAX] = round(self.state[TaxField.TAXABLE_INVESTMENT_INCOME] * 0.128)
 
     def compute_reference_fiscal_income(self):
-        self.state["reference_fiscal_income"] = max(self.state["total_net_income"]\
-                                                    + self.state["taxable_investment_income"]\
-                                                    + self.state["capital_gain_3VG"],
+        self.state[TaxField.REFERENCE_FISCAL_INCOME] = max(self.state[TaxField.TOTAL_NET_INCOME]\
+                                                    + self.state[TaxField.TAXABLE_INVESTMENT_INCOME]\
+                                                    + self.state[TaxField.CAPITAL_GAIN_3VG],
                                                     0)
 
     def _compute_income_tax(self, household_shares):
         # https://www.service-public.fr/particuliers/vosdroits/F1419
         slices_thresholds = self.parameters.slices_thresholds
         slices_rates = self.parameters.slices_rates
-        taxable_income = self.state["taxable_income"]
+        taxable_income = self.state[TaxField.TAXABLE_INCOME]
         thresholds = [t * household_shares for t in
                       slices_thresholds]  # scale thresholds to the number of people in the household
         self.maybe_print("Thresholds: ", thresholds)
@@ -203,10 +273,10 @@ class TaxSimulator:
     # computes the actual progressive tax
     def compute_tax_before_reductions(self):
         capping_parameter = self.parameters.family_quotient_benefices_capping
-        household_shares = self.state["household_shares"]
+        household_shares = self.state[TaxField.HOUSEHOLD_SHARES]
         tax_with_family_quotient, marginal_tax_rate = self._compute_income_tax(household_shares)
         self.flags[TaxInfoFlag.MARGINAL_TAX_RATE] = f"{round(marginal_tax_rate * 100)}%"
-        household_shares_without_family_quotient = 2 if self.state["married"] else 1
+        household_shares_without_family_quotient = 2 if self.state[TaxField.MARRIED] else 1
         tax_without_family_quotient, _ = self._compute_income_tax(household_shares_without_family_quotient)
         # apply capping of the family quotient benefices, see
         # https://www.economie.gouv.fr/particuliers/quotient-familial
@@ -221,8 +291,8 @@ class TaxSimulator:
             final_income_tax = tax_without_family_quotient - family_quotient_benefices_capping
         else:
             final_income_tax = tax_with_family_quotient
-        self.state["simple_tax_right"] = round(final_income_tax) # "Droits simples" in French
-        self.state["tax_before_reductions"] = self.state["simple_tax_right"] + self.state["investment_income_tax"]
+        self.state[TaxField.SIMPLE_TAX_RIGHT] = round(final_income_tax) # "Droits simples" in French
+        self.state[TaxField.TAX_BEFORE_REDUCTIONS] = self.state[TaxField.SIMPLE_TAX_RIGHT] + self.state[TaxField.INVESTMENT_INCOME_TAX]
 
     # Computes all tax reductions. Currently supported:
     # * donations (7UD)
@@ -231,41 +301,48 @@ class TaxSimulator:
         # See:
         # https://www.impots.gouv.fr/portail/particulier/questions/jai-fait-des-dons-une-association-que-puis-je-deduire
         # 75% reduction for "Dons aux organismes d'aide aux personnes en difficulté", up to a ceiling ...
-        charity_donation_7ud = self.state["charity_donation_7UD"]
+        charity_donation_7ud = self.state[TaxField.CHARITY_DONATION_7UD]
         capped_or_not = " (capped)" if charity_donation_7ud > 1000 else ""
         charity_donation_75p = min(charity_donation_7ud, 1000)
         self.flags[TaxInfoFlag.CHARITY_75P] = f"{charity_donation_75p}€{capped_or_not}"
         charity_donation_reduction_75p = charity_donation_75p * 0.75
         # ... then 66% for the rest, plus the "Dons aux organismes d'intérêt général", up to 20% of the taxable income
-        charity_donation_7uf = self.state["charity_donation_7UF"]
+        charity_donation_7uf = self.state[TaxField.CHARITY_DONATION_7UF]
         donation_leftover = charity_donation_7uf + max(charity_donation_7ud - 1000, 0)
-        taxable_income = max(self.state["taxable_income"], 0)
+        taxable_income = max(self.state[TaxField.TAXABLE_INCOME], 0)
         capped_or_not = " (capped)" if donation_leftover > taxable_income * 0.20 else ""
         charity_donation_66p = round(min(donation_leftover, taxable_income * 0.20))
         charity_donation_reduction_66p = charity_donation_66p * 0.66
         self.flags[TaxInfoFlag.CHARITY_66P] = f"{charity_donation_66p}€{capped_or_not}"
         # Total reduction
-        self.state["charity_reduction"] = charity_donation_reduction_75p + charity_donation_reduction_66p
+        self.state[TaxField.CHARITY_REDUCTION] = charity_donation_reduction_75p + charity_donation_reduction_66p
 
         # Subscription to PME capital: in 2020 there are 2 segments: before and after Aug.10th (with different reduction
         # rates). See:
         # https://www.impots.gouv.fr/portail/particulier/questions/si-jinvestis-dans-une-entreprise-ai-je-droit-une-reduction-dimpot
-        subscription_capping = 100000 if self.state["married"] else 50000
-        pme_capital_subscription_before = min(self.state["pme_capital_subscription_7CF"], subscription_capping)
-        pme_capital_subscription_after = min(self.state["pme_capital_subscription_7CH"],
+        subscription_capping = 100000 if self.state[TaxField.MARRIED] else 50000
+        pme_capital_subscription_before = min(self.state[TaxField.SME_CAPITAL_SUBSCRIPTION_7CF], subscription_capping)
+        pme_capital_subscription_after = min(self.state[TaxField.SME_CAPITAL_SUBSCRIPTION_7CH],
                                                    subscription_capping - pme_capital_subscription_before)
-        self.state["pme_subscription_reduction"] = pme_capital_subscription_before * 0.18\
+        self.state[TaxField.SME_SUBSCRIPTION_REDUCTION] = pme_capital_subscription_before * 0.18\
                                                    + pme_capital_subscription_after * 0.25
 
     def compute_tax_credits(self):
         # Daycare fees, capped & rated at 50%. See:
         # https://www.impots.gouv.fr/portail/particulier/questions/je-fais-garder-mon-jeune-enfant-lexterieur-du-domicile-que-puis-je-deduire
-        nb_children_lt_6yo = self.state["nb_children_lt_6yo"]
+        nb_children_lt_6yo = self.state[TaxField.NB_CHILDREN_LT_6YO]
         nb_children_with_daycare_fees = 0
         total_fees = 0
         fees_capped_out = 0
-        for c in "ABCDEFG":
-            fees_key = f"children_daycare_fees_7G{c}"
+        for fees_key in [
+            TaxField.CHILDREN_DAYCARE_FEES_7GA,
+            TaxField.CHILDREN_DAYCARE_FEES_7GB,
+            TaxField.CHILDREN_DAYCARE_FEES_7GC,
+            TaxField.CHILDREN_DAYCARE_FEES_7GD,
+            TaxField.CHILDREN_DAYCARE_FEES_7GE,
+            TaxField.CHILDREN_DAYCARE_FEES_7GF,
+            TaxField.CHILDREN_DAYCARE_FEES_7GG
+        ]:
             if fees_key in self.state:
                 nb_children_with_daycare_fees += 1
                 if nb_children_with_daycare_fees > nb_children_lt_6yo:
@@ -273,32 +350,32 @@ class TaxSimulator:
                 total_fees += min(self.state[fees_key], 2300)
                 fees_capped_out += max(self.state[fees_key]-2300, 0)
         self.flags[TaxInfoFlag.CHILD_DAYCARE_CREDIT_CAPPING] = f"capped to {total_fees}€ (originally {total_fees+fees_capped_out}€)"
-        self.state["children_daycare_taxcredit"] = total_fees * 0.5
+        self.state[TaxField.CHILDREN_DAYCARE_TAXCREDIT] = total_fees * 0.5
 
         # services at home (cleaning etc.)
         # https://www.impots.gouv.fr/portail/particulier/emploi-domicile
-        home_services_capping = min(12000 + 1500 * self.state["nb_children"], 15000)
-        home_services = self.state["home_services_7DB"]
+        home_services_capping = min(12000 + 1500 * self.state[TaxField.NB_CHILDREN], 15000)
+        home_services = self.state[TaxField.HOME_SERVICES_7DB]
         if home_services > home_services_capping:
             self.flags[TaxInfoFlag.HOME_SERVICES_CREDIT_CAPPING] = f"capped to {home_services_capping}€"\
                                                                    + f" (originally {home_services}€)"
         capped_home_services = min(home_services, home_services_capping)
-        self.state["home_services_taxcredit"] = capped_home_services * 0.5
+        self.state[TaxField.HOME_SERVICES_TAXCREDIT] = capped_home_services * 0.5
 
     def compute_capital_taxes(self):
         # simple, flat tax based (opting for progressive tax with box "2OP" is not supported in this simulator)
-        self.state["capital_gain_tax"] = self.state["capital_gain_3VG"] * 0.128
+        self.state[TaxField.CAPITAL_GAIN_TAX] = self.state[TaxField.CAPITAL_GAIN_3VG] * 0.128
 
     def compute_net_taxes(self):
         # Tax reductions and credits are in part capped ("Plafonnement des niches fiscales")
         # https://www.service-public.fr/particuliers/vosdroits/F31179
-        all_taxes_before_capping = self.state["tax_before_reductions"] \
-                                   - self.state["charity_reduction"]
+        all_taxes_before_capping = self.state[TaxField.TAX_BEFORE_REDUCTIONS] \
+                                   - self.state[TaxField.CHARITY_REDUCTION]
         taxes_with_reduction_before_capping = all_taxes_before_capping \
-                                              - self.state["pme_subscription_reduction"]
+                                              - self.state[TaxField.SME_SUBSCRIPTION_REDUCTION]
         partial_taxes_2 = max(taxes_with_reduction_before_capping, 0) \
-                          - self.state["children_daycare_taxcredit"] \
-                          - self.state["home_services_taxcredit"]
+                          - self.state[TaxField.CHILDREN_DAYCARE_TAXCREDIT] \
+                          - self.state[TaxField.HOME_SERVICES_TAXCREDIT]
 
         fiscal_advantages = all_taxes_before_capping - partial_taxes_2
         if fiscal_advantages > 10000:
@@ -309,23 +386,24 @@ class TaxSimulator:
                                                                f" (uncapped, {10000 - fiscal_advantages}€ from ceiling)"
             net_taxes_after_global_capping = partial_taxes_2
 
-        net_taxes = net_taxes_after_global_capping + self.state["capital_gain_tax"] - self.state["interest_tax_already_paid_2CK"]
-        self.state["net_taxes"] = round(net_taxes, 2)
+        net_taxes = net_taxes_after_global_capping + self.state[TaxField.CAPITAL_GAIN_TAX] - self.state[TaxField.INTEREST_TAX_ALREADY_PAID_2CK]
+        self.state[TaxField.NET_TAXES] = round(net_taxes, 2)
 
     def compute_social_taxes(self):
         # stock options
-        so_exercise_gains = self.state["exercise_gain_1_1TT"] + self.state["exercise_gain_2_1UT"]
+        so_exercise_gains = self.state[TaxField.EXERCISE_GAIN_1_1TT] + self.state[TaxField.EXERCISE_GAIN_2_1UT]
         so_salarycontrib_10p = so_exercise_gains * 0.1
         so_csg = so_exercise_gains * 0.092
         so_crds = so_exercise_gains * 0.005
         so_socialtaxes = so_salarycontrib_10p + so_csg + so_crds
         # capital acquisition (RSUs), capital gain (RSUs and normal stocks)
-        rsu_socialtax_base = self.state["capital_gain_3VG"] + self.state["taxable_acquisition_gain_1TZ"] \
-                             + self.state["acquisition_gain_rebates_1UZ"] + self.state[
-                                 "acquisition_gain_50p_rebates_1WZ"]
+        rsu_socialtax_base = self.state[TaxField.CAPITAL_GAIN_3VG] \
+                             + self.state[TaxField.TAXABLE_ACQUISITION_GAIN_1TZ] \
+                             + self.state[TaxField.ACQUISITION_GAIN_REBATES_1UZ] \
+                             + self.state[TaxField.ACQUISITION_GAIN_50P_REBATES_1WZ]
         rsu_socialtaxes = rsu_socialtax_base * (0.097 + 0.075)
-        investments_interests_csgcrds = (self.state["taxable_investment_income"] - self.state["fixed_income_interests_already_taxed_2BH"]) * (0.1 + 0.075)
-        rental_income_base = max(self.state["rental_income_result"], 0)  # rental income result can be negative, but it can't reduce social taxes
+        investments_interests_csgcrds = (self.state[TaxField.TAXABLE_INVESTMENT_INCOME] - self.state[TaxField.FIXED_INCOME_INTERESTS_ALREADY_TAXED_2BH]) * (0.1 + 0.075)
+        rental_income_base = max(self.state[TaxField.RENTAL_INCOME_RESULT], 0)  # rental income result can be negative, but it can't reduce social taxes
         rental_income_socialtaxes = rental_income_base * (0.097 + 0.075)
-        self.state["net_social_taxes"] = round(so_socialtaxes + rsu_socialtaxes\
+        self.state[TaxField.NET_SOCIAL_TAXES] = round(so_socialtaxes + rsu_socialtaxes\
                                                + investments_interests_csgcrds + rental_income_socialtaxes)
