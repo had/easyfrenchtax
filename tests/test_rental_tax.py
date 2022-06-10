@@ -146,6 +146,23 @@ tax_tests = [
             },
             flags={
             }),
+    TaxTest(name="lmnp_income", year=2022,
+            inputs={
+                TaxField.MARRIED: True,
+                TaxField.NB_CHILDREN: 0,
+                TaxField.SALARY_1_1AJ: 50000,
+                TaxField.SALARY_2_1BJ: 30000,
+                TaxField.LMNP_MICRO_INCOME_1_5ND: 1000,
+                TaxField.LMNP_MICRO_INCOME_2_5OD: 12000
+            },
+            results={
+                TaxField.TAXABLE_LMNP_INCOME: 6500,
+                TaxField.REFERENCE_FISCAL_INCOME: 78500,
+                TaxField.NET_TAXES: 11394,
+                TaxField.NET_SOCIAL_TAXES: 1119,
+            },
+            flags={
+            }),
     ]
 
 @pytest.mark.parametrize("year,inputs,results,flags",

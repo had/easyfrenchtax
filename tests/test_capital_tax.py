@@ -78,14 +78,14 @@ tax_tests = [
                 TaxField.NB_CHILDREN: 0,
                 TaxField.SALARY_1_1AJ: 30000,
                 TaxField.SALARY_2_1BJ: 40000,
-                TaxField.FIXED_INCOME_INTERESTS_2TR: 150,
+                TaxField.FIXED_INCOME_INTERESTS_2TR: 1500,
             },
             results={
-                TaxField.MARRIED: True,
-                TaxField.NB_CHILDREN: 0,
-                TaxField.SALARY_1_1AJ: 30000,
-                TaxField.SALARY_2_1BJ: 40000,
-                TaxField.FIXED_INCOME_INTERESTS_2TR: 150
+                TaxField.REFERENCE_FISCAL_INCOME: 64500,
+                TaxField.SIMPLE_TAX_RIGHT: 6744,
+                TaxField.INVESTMENT_INCOME_TAX: 192,
+                TaxField.NET_TAXES: 6936,
+                TaxField.NET_SOCIAL_TAXES: 259,
             },
             flags={
             }),

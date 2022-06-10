@@ -1,6 +1,6 @@
 from collections import defaultdict, namedtuple
 from enum import Enum
-
+from decimal import Decimal, ROUND_HALF_UP
 
 class TaxInfoFlag(Enum):
     FEE_REBATE_INCOME_1 = "[1] Hit ceiling for fees rebate on income"
@@ -40,6 +40,9 @@ class TaxField(Enum):
     RENTAL_INCOME_GLOBAL_DEFICIT_4BC = "rental_income_global_deficit_4BC"
     PREVIOUS_RENTAL_INCOME_DEFICIT_4BD = "previous_rental_income_deficit_4BD"
     SIMPLIFIED_RENTAL_INCOME_4BE = "simplified_rental_income_4BE"
+    LMNP_MICRO_INCOME_1_5ND = "lmnp_micro_income_1_5nd"
+    LMNP_MICRO_INCOME_2_5OD = "lmnp_micro_income_2_5od"
+    LMNP_MICRO_INCOME_3_5PD = "lmnp_micro_income_3_5pd"
     PER_TRANSFERS_1_6NS = "per_transfers_1_6NS"
     PER_TRANSFERS_2_6NT = "per_transfers_2_6NT"
     SME_CAPITAL_SUBSCRIPTION_7CF = "sme_capital_subscription_7CF"
@@ -57,6 +60,7 @@ class TaxField(Enum):
 # Intermediate results
     NB_CHILDREN_LT_6YO = "nb_children_lt_6yo"
     RENTAL_INCOME_RESULT = "rental_income_result"
+    TAXABLE_LMNP_INCOME = "taxable_lmnp_income"
     DEDUCTION_10P_1 = "deduction_10p_1"
     DEDUCTION_10P_2 = "deduction_10p_2"
     TAXABLE_INVESTMENT_INCOME = "taxable_investment_income"
@@ -106,6 +110,14 @@ year_tax_parameters = {
     ),
 }
 
+def tax_round(v, places=0):
+    # python rounds half to even (bankers rounding), we need to tax_round half up
+    q = Decimal(10) ** (-places)
+    return float(Decimal(v).quantize(q,rounding=ROUND_HALF_UP))
+    # with decimal.localcontext() as ctx:
+    #     ctx.rounding = decimal.ROUND_HALF_UP
+    #     return decimal.Decimal(v).to_integral_value()
+
 class TaxSimulator:
     def __init__(self, statement_year, tax_input, debug=False):
         self.parameters = year_tax_parameters[statement_year]
@@ -115,6 +127,7 @@ class TaxSimulator:
         self.state[TaxField.YEAR] = statement_year
         self.process_family_information()
         self.compute_rental_income()
+        self.compute_furnished_rentals()
         self.compute_net_income()
         self.compute_taxable_income()
         self.compute_flat_rate_taxes()
@@ -191,6 +204,16 @@ class TaxSimulator:
             self.state[TaxField.RENTAL_DEFICIT_CARRYOVER] = final_deficit_carryover
             self.flags[TaxInfoFlag.RENTAL_DEFICIT_CARRYOVER] = f"{final_deficit_carryover}€"
 
+    def compute_furnished_rentals(self):
+        # This corresponds to "Non professional furnished rentals" (LMNP in French, for "Location meublées non
+        # professoinnelles"). Only "micro" incomes are supported (i.e. less than 72'600€ income per year). More details:
+        # https://www.impots.gouv.fr/sites/default/files/media/1_metier/1_particulier/EV/1_declarer/141_autres_revenus/eco-collabo-fiscal-logement-meuble.pdf
+        incomes = self.state[TaxField.LMNP_MICRO_INCOME_1_5ND]\
+                  + self.state[TaxField.LMNP_MICRO_INCOME_2_5OD]\
+                  + self.state[TaxField.LMNP_MICRO_INCOME_3_5PD]
+        incomes_rebate = max(incomes * 0.5, 305)  # minimum rebate is 305e
+        self.state[TaxField.TAXABLE_LMNP_INCOME] = max(incomes - incomes_rebate, 0)
+
     def compute_net_income(self):
         incomes_1 = self.state[TaxField.SALARY_1_1AJ] + self.state[TaxField.EXERCISE_GAIN_1_1TT]
         incomes_2 = self.state[TaxField.SALARY_2_1BJ] + self.state[TaxField.EXERCISE_GAIN_2_1UT]
@@ -198,7 +221,7 @@ class TaxSimulator:
         # https://www.impots.gouv.fr/portail/particulier/questions/comment-puis-je-beneficier-de-la-deduction-forfaitaire-de-10
         fees_10p_floor = self.parameters.fees_10p_deduction_floor
         fees_10p_ceiling = self.parameters.fees_10p_deduction_ceiling
-        incomes_1_10p = round(incomes_1 * 0.1)
+        incomes_1_10p = tax_round(incomes_1 * 0.1)
         fee_deduction_1 = max(min(incomes_1_10p, fees_10p_ceiling), fees_10p_floor)
         self.state[TaxField.DEDUCTION_10P_1] = fee_deduction_1
         if incomes_1_10p > fees_10p_ceiling:
@@ -206,14 +229,16 @@ class TaxSimulator:
             self.flags[TaxInfoFlag.FEE_REBATE_INCOME_1] = f"taxable income += {tax_increment}€"
         net_income = incomes_1 - fee_deduction_1
         if self.state[TaxField.MARRIED]:
-            incomes_2_10p = round(incomes_2 * 0.1)
+            incomes_2_10p = tax_round(incomes_2 * 0.1)
             fee_deduction_2 = max(min(incomes_2_10p, fees_10p_ceiling), fees_10p_floor)
             self.state[TaxField.DEDUCTION_10P_2] = fee_deduction_2
             if incomes_2_10p > fees_10p_ceiling:
                 tax_increment = round(incomes_2_10p - fees_10p_ceiling)
                 self.flags[TaxInfoFlag.FEE_REBATE_INCOME_2] = f"taxable income += {tax_increment}€"
             net_income += incomes_2 - fee_deduction_2
-        self.state[TaxField.TOTAL_NET_INCOME] = net_income + self.state[TaxField.RENTAL_INCOME_RESULT]
+        self.state[TaxField.TOTAL_NET_INCOME] = net_income \
+                                                + self.state[TaxField.RENTAL_INCOME_RESULT] \
+                                                + self.state[TaxField.TAXABLE_LMNP_INCOME]
 
     def compute_taxable_income(self):
         # TODO take capping into account
@@ -229,7 +254,7 @@ class TaxSimulator:
         # supporting 2TR only for now
         # TODO: support others (2DC, 2FU, 2TS, 2TT, 2WW, 2ZZ, 2TQ, 2TZ)
         self.state[TaxField.TAXABLE_INVESTMENT_INCOME] = self.state[TaxField.FIXED_INCOME_INTERESTS_2TR]
-        self.state[TaxField.INVESTMENT_INCOME_TAX] = round(self.state[TaxField.TAXABLE_INVESTMENT_INCOME] * 0.128)
+        self.state[TaxField.INVESTMENT_INCOME_TAX] = tax_round(self.state[TaxField.TAXABLE_INVESTMENT_INCOME] * 0.128)
 
     def compute_reference_fiscal_income(self):
         self.state[TaxField.REFERENCE_FISCAL_INCOME] = max(self.state[TaxField.TOTAL_NET_INCOME]\
@@ -287,11 +312,11 @@ class TaxSimulator:
         if (family_quotient_benefices > family_quotient_benefices_capping):
             additional_taxes = family_quotient_benefices - family_quotient_benefices_capping
             self.flags[
-                TaxInfoFlag.FAMILY_QUOTIENT_CAPPING] = f"tax += {round(additional_taxes, 2)}€"
+                TaxInfoFlag.FAMILY_QUOTIENT_CAPPING] = f"tax += {tax_round(additional_taxes, 2)}€"
             final_income_tax = tax_without_family_quotient - family_quotient_benefices_capping
         else:
             final_income_tax = tax_with_family_quotient
-        self.state[TaxField.SIMPLE_TAX_RIGHT] = round(final_income_tax) # "Droits simples" in French
+        self.state[TaxField.SIMPLE_TAX_RIGHT] = tax_round(final_income_tax) # "Droits simples" in French
         self.state[TaxField.TAX_BEFORE_REDUCTIONS] = self.state[TaxField.SIMPLE_TAX_RIGHT] + self.state[TaxField.INVESTMENT_INCOME_TAX]
 
     # Computes all tax reductions. Currently supported:
@@ -311,9 +336,9 @@ class TaxSimulator:
         donation_leftover = charity_donation_7uf + max(charity_donation_7ud - 1000, 0)
         taxable_income = max(self.state[TaxField.TAXABLE_INCOME], 0)
         capped_or_not = " (capped)" if donation_leftover > taxable_income * 0.20 else ""
-        charity_donation_66p = round(min(donation_leftover, taxable_income * 0.20))
+        charity_donation_66p = tax_round(min(donation_leftover, taxable_income * 0.20))
         charity_donation_reduction_66p = charity_donation_66p * 0.66
-        self.flags[TaxInfoFlag.CHARITY_66P] = f"{charity_donation_66p}€{capped_or_not}"
+        self.flags[TaxInfoFlag.CHARITY_66P] = f"{int(charity_donation_66p)}€{capped_or_not}"
         # Total reduction
         self.state[TaxField.CHARITY_REDUCTION] = charity_donation_reduction_75p + charity_donation_reduction_66p
 
@@ -387,23 +412,21 @@ class TaxSimulator:
             net_taxes_after_global_capping = partial_taxes_2
 
         net_taxes = net_taxes_after_global_capping + self.state[TaxField.CAPITAL_GAIN_TAX] - self.state[TaxField.INTEREST_TAX_ALREADY_PAID_2CK]
-        self.state[TaxField.NET_TAXES] = round(net_taxes, 2)
+        self.state[TaxField.NET_TAXES] = tax_round(net_taxes, 2)
 
     def compute_social_taxes(self):
-        # stock options
-        so_exercise_gains = self.state[TaxField.EXERCISE_GAIN_1_1TT] + self.state[TaxField.EXERCISE_GAIN_2_1UT]
-        so_salarycontrib_10p = so_exercise_gains * 0.1
-        so_csg = so_exercise_gains * 0.092
-        so_crds = so_exercise_gains * 0.005
-        so_socialtaxes = so_salarycontrib_10p + so_csg + so_crds
-        # capital acquisition (RSUs), capital gain (RSUs and normal stocks)
-        rsu_socialtax_base = self.state[TaxField.CAPITAL_GAIN_3VG] \
-                             + self.state[TaxField.TAXABLE_ACQUISITION_GAIN_1TZ] \
-                             + self.state[TaxField.ACQUISITION_GAIN_REBATES_1UZ] \
-                             + self.state[TaxField.ACQUISITION_GAIN_50P_REBATES_1WZ]
-        rsu_socialtaxes = rsu_socialtax_base * (0.097 + 0.075)
-        investments_interests_csgcrds = (self.state[TaxField.TAXABLE_INVESTMENT_INCOME] - self.state[TaxField.FIXED_INCOME_INTERESTS_ALREADY_TAXED_2BH]) * (0.1 + 0.075)
-        rental_income_base = max(self.state[TaxField.RENTAL_INCOME_RESULT], 0)  # rental income result can be negative, but it can't reduce social taxes
-        rental_income_socialtaxes = rental_income_base * (0.097 + 0.075)
-        self.state[TaxField.NET_SOCIAL_TAXES] = round(so_socialtaxes + rsu_socialtaxes\
-                                               + investments_interests_csgcrds + rental_income_socialtaxes)
+        csg_crds_base = self.state[TaxField.CAPITAL_GAIN_3VG] \
+                        + self.state[TaxField.TAXABLE_ACQUISITION_GAIN_1TZ] \
+                        + self.state[TaxField.ACQUISITION_GAIN_REBATES_1UZ] \
+                        + self.state[TaxField.ACQUISITION_GAIN_50P_REBATES_1WZ] \
+                        + (self.state[TaxField.TAXABLE_INVESTMENT_INCOME]
+                           - self.state[TaxField.FIXED_INCOME_INTERESTS_ALREADY_TAXED_2BH]) \
+                        + max(self.state[TaxField.RENTAL_INCOME_RESULT], 0) \
+                        + self.state[TaxField.TAXABLE_LMNP_INCOME]
+        activity_income_crds_base = self.state[TaxField.EXERCISE_GAIN_1_1TT] + self.state[TaxField.EXERCISE_GAIN_2_1UT]
+        salary_contrib_10p_base = self.state[TaxField.EXERCISE_GAIN_1_1TT] + self.state[TaxField.EXERCISE_GAIN_2_1UT]
+
+        csg_crds_taxes = tax_round((csg_crds_base + activity_income_crds_base) * 0.097)
+        solidarity_75_taxes = tax_round(csg_crds_base * 0.075)
+        salary_contrib_10p = salary_contrib_10p_base * 0.1
+        self.state[TaxField.NET_SOCIAL_TAXES] = csg_crds_taxes + solidarity_75_taxes + salary_contrib_10p
