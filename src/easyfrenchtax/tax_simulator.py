@@ -35,6 +35,7 @@ class TaxField(Enum):
     FIXED_INCOME_INTERESTS_2TR = "fixed_income_interests_2TR"
     INTEREST_TAX_ALREADY_PAID_2CK = "interest_tax_already_paid_2CK"
     CAPITAL_GAIN_3VG = "capital_gain_3VG"
+    CAPITAL_LOSS_3VH = "capital_loss_3VH"
     REAL_RENTAL_PROFIT_4BA = "real_rental_profit_4BA"
     REAL_RENTAL_INCOME_DEFICIT_4BB = "real_rental_income_deficit_4BB"
     RENTAL_INCOME_GLOBAL_DEFICIT_4BC = "rental_income_global_deficit_4BC"
@@ -120,7 +121,11 @@ def tax_round(v, places=0):
 
 class TaxSimulator:
     def __init__(self, statement_year, tax_input, debug=False):
-        self.parameters = year_tax_parameters[statement_year]
+        if statement_year in year_tax_parameters:
+            self.parameters = year_tax_parameters[statement_year]
+        else:
+            # TODO FIXME
+            self.parameters = year_tax_parameters[2022]
         self.flags = {}
         self.debug = debug
         self.state = defaultdict(int, tax_input)
@@ -146,19 +151,20 @@ class TaxSimulator:
         nb_children_1 = min(self.state[TaxField.NB_CHILDREN], 2)
         nb_children_2 = max(0, self.state[TaxField.NB_CHILDREN] - nb_children_1)
         self.state[TaxField.HOUSEHOLD_SHARES] = base_shares + nb_children_1 * 0.5 + nb_children_2
-        # counting children aged less than 6 years old
-        nb_children_lt_6yo = 0
-        for child_birthyear_key in [TaxField.CHILD_1_BIRTHYEAR,
-                                    TaxField.CHILD_2_BIRTHYEAR,
-                                    TaxField.CHILD_3_BIRTHYEAR,
-                                    TaxField.CHILD_4_BIRTHYEAR,
-                                    TaxField.CHILD_5_BIRTHYEAR,
-                                    TaxField.CHILD_6_BIRTHYEAR]:
-            if child_birthyear_key in self.state:
-                # counting from year-1, (i.e. if declaring in 2022, checking age on Jan 1st 2021)
-                if self.state[TaxField.YEAR] - 1 - self.state[child_birthyear_key] <= 6:
-                    nb_children_lt_6yo += 1
-        self.state[TaxField.NB_CHILDREN_LT_6YO] = nb_children_lt_6yo
+        # counting children aged less than 6 years old, if not provided
+        if TaxField.NB_CHILDREN_LT_6YO not in self.state:
+            nb_children_lt_6yo = 0
+            for child_birthyear_key in [TaxField.CHILD_1_BIRTHYEAR,
+                                        TaxField.CHILD_2_BIRTHYEAR,
+                                        TaxField.CHILD_3_BIRTHYEAR,
+                                        TaxField.CHILD_4_BIRTHYEAR,
+                                        TaxField.CHILD_5_BIRTHYEAR,
+                                        TaxField.CHILD_6_BIRTHYEAR]:
+                if child_birthyear_key in self.state:
+                    # counting from year-1, (i.e. if declaring in 2022, checking age on Jan 1st 2021)
+                    if self.state[TaxField.YEAR] - 1 - self.state[child_birthyear_key] <= 6:
+                        nb_children_lt_6yo += 1
+            self.state[TaxField.NB_CHILDREN_LT_6YO] = nb_children_lt_6yo
 
     def compute_rental_income(self):
         # French tax system considers only non-furnished apartments to be "rental income". Furnished apartments are
@@ -356,6 +362,7 @@ class TaxSimulator:
         # Daycare fees, capped & rated at 50%. See:
         # https://www.impots.gouv.fr/portail/particulier/questions/je-fais-garder-mon-jeune-enfant-lexterieur-du-domicile-que-puis-je-deduire
         nb_children_lt_6yo = self.state[TaxField.NB_CHILDREN_LT_6YO]
+
         nb_children_with_daycare_fees = 0
         total_fees = 0
         fees_capped_out = 0
@@ -371,7 +378,7 @@ class TaxSimulator:
             if fees_key in self.state:
                 nb_children_with_daycare_fees += 1
                 if nb_children_with_daycare_fees > nb_children_lt_6yo:
-                    raise Exception("You are declaring more children daycare fees than you have children below 6y old")
+                    raise Exception(f"You are declaring more children daycare fees ({nb_children_with_daycare_fees}) than you have children below 6y old ({nb_children_lt_6yo})")
                 total_fees += min(self.state[fees_key], 2300)
                 fees_capped_out += max(self.state[fees_key]-2300, 0)
         self.flags[TaxInfoFlag.CHILD_DAYCARE_CREDIT_CAPPING] = f"capped to {total_fees}€ (originally {total_fees+fees_capped_out}€)"
