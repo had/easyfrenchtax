@@ -261,7 +261,7 @@ tax_exception_tests = [
                         TaxField.SALARY_2_1BJ: 10000,
                         TaxField.CHILDREN_DAYCARE_FEES_7GA: 2500,
                      },
-                     message=re.escape("You are declaring more children daycare fees than you have children below 6y old")),
+                     message=re.escape("You are declaring more children daycare fees (1) than you have children below 6y old (0)")),
 ]
 
 @pytest.mark.parametrize("year,inputs,message",
