@@ -1,6 +1,8 @@
 from collections import defaultdict, namedtuple
 from enum import Enum
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Any
+
 
 class TaxInfoFlag(Enum):
     FEE_REBATE_INCOME_1 = "[1] Hit ceiling for fees rebate on income"
@@ -14,8 +16,9 @@ class TaxInfoFlag(Enum):
     CHARITY_66P = "Charity donation resulting in 66% reduction"
     RENTAL_DEFICIT_CARRYOVER = "Rental income deficit to carry-over next years"
 
+
 class TaxField(Enum):
-# Input fields
+    # Input fields
     MARRIED = "married"
     NB_CHILDREN = "nb_children"
     CHILD_1_BIRTHYEAR = "child_1_birthyear"
@@ -58,7 +61,7 @@ class TaxField(Enum):
     CHILDREN_DAYCARE_FEES_7GG = "children_daycare_fees_7GG"
     CHARITY_DONATION_7UD = "charity_donation_7UD"
     CHARITY_DONATION_7UF = "charity_donation_7UF"
-# Intermediate results
+    # Intermediate results
     NB_CHILDREN_LT_6YO = "nb_children_lt_6yo"
     RENTAL_INCOME_RESULT = "rental_income_result"
     TAXABLE_LMNP_INCOME = "taxable_lmnp_income"
@@ -73,7 +76,7 @@ class TaxField(Enum):
     CHILDREN_DAYCARE_TAXCREDIT = "children_daycare_taxcredit"
     HOME_SERVICES_TAXCREDIT = "home_services_taxcredit"
     CAPITAL_GAIN_TAX = "capital_gain_tax"
-# Output fields
+    # Output fields
     YEAR = "year"
     HOUSEHOLD_SHARES = "household_shares"
     RENTAL_DEFICIT_CARRYOVER = "rental_deficit_carryover"
@@ -83,17 +86,18 @@ class TaxField(Enum):
     NET_TAXES = "net_taxes"
     NET_SOCIAL_TAXES = "net_social_taxes"
 
+
 # Lots of parameters evolve year after year (inflation, political decisions, etc.)
 # This dictionary gathers all variable parameters.
 TaxParameters = namedtuple("TaxParameters", [
     # Source: https://www.economie.gouv.fr/particuliers/quotient-familial
     "family_quotient_benefices_capping",
-    # Source: https://www.service-public.fr/particuliers/vosdroits/F1419
+    # https://www.service-public.fr/particuliers/vosdroits/F1419
     "slices_thresholds", "slices_rates",
-    # Source: https://www.impots.gouv.fr/particulier/questions/comment-puis-je-beneficier-de-la-deduction-forfaitaire-de-10
+    # https://www.impots.gouv.fr/particulier/questions/comment-puis-je-beneficier-de-la-deduction-forfaitaire-de-10
     "fees_10p_deduction_ceiling", "fees_10p_deduction_floor"
-] )
-year_tax_parameters = {
+])
+year_tax_parameters: dict[int, TaxParameters] = {
     2021: TaxParameters(
         family_quotient_benefices_capping=1570,
         slices_thresholds=[10084, 25710, 73516, 158122],
@@ -111,16 +115,20 @@ year_tax_parameters = {
     ),
 }
 
-def tax_round(v, places=0):
+
+def tax_round(v: float, places: int = 0) -> float:
     # python rounds half to even (bankers rounding), we need to tax_round half up
     q = Decimal(10) ** (-places)
-    return float(Decimal(v).quantize(q,rounding=ROUND_HALF_UP))
-    # with decimal.localcontext() as ctx:
-    #     ctx.rounding = decimal.ROUND_HALF_UP
-    #     return decimal.Decimal(v).to_integral_value()
+    return float(Decimal(v).quantize(q, rounding=ROUND_HALF_UP))
+
 
 class TaxSimulator:
-    def __init__(self, statement_year, tax_input, debug=False):
+    parameters: TaxParameters
+    flags: dict[TaxInfoFlag, str]
+    debug: bool
+    state: dict[TaxField, Any]
+
+    def __init__(self, statement_year: int, tax_input: dict[TaxField, Any], debug: bool = False):
         if statement_year in year_tax_parameters:
             self.parameters = year_tax_parameters[statement_year]
         else:
@@ -145,7 +153,8 @@ class TaxSimulator:
         self.compute_social_taxes()
 
     def process_family_information(self):
-        # See https://www.service-public.fr/particuliers/vosdroits/F2705 and https://www.service-public.fr/particuliers/vosdroits/F2702
+        # See https://www.service-public.fr/particuliers/vosdroits/F2705 and
+        # https://www.service-public.fr/particuliers/vosdroits/F2702
         # /!\ extra half-shares and shared custody are not taken into account
         base_shares = 2 if self.state[TaxField.MARRIED] else 1
         nb_children_1 = min(self.state[TaxField.NB_CHILDREN], 2)
@@ -189,16 +198,18 @@ class TaxSimulator:
 
         if simplified_income_reporting:
             if net_profit or deficit or global_deficit or previous_deficit:
-                raise Exception("The simplified rental income reporting (4BE) cannot be combined with the default rental income reporting (4BA 4BB 4BC)")
+                raise Exception("The simplified rental income reporting (4BE) cannot be combined with the default "
+                                "rental income reporting (4BA 4BB 4BC)")
             if simplified_income_reporting > 15000:
                 raise Exception("Simplified rental income reporting (4BE) cannot exceed 15'000€")
-            final_net_profit = simplified_income_reporting * 0.7 # 30% rebate automatically applied
+            final_net_profit = simplified_income_reporting * 0.7  # 30% rebate automatically applied
             final_deficit_carryover = 0
         elif net_profit:
             if deficit or global_deficit:
-                raise Exception("Rental profit reporting (4BA) cannot be combined with rental deficit reporting(4BB 4BC)")
-            final_net_profit = max(net_profit-previous_deficit, 0)
-            final_deficit_carryover = max(0, previous_deficit-net_profit)
+                raise Exception(
+                    "Rental profit reporting (4BA) cannot be combined with rental deficit reporting(4BB 4BC)")
+            final_net_profit = max(net_profit - previous_deficit, 0)
+            final_deficit_carryover = max(0, previous_deficit - net_profit)
         else:
             if global_deficit > 10700:
                 raise Exception("Rental deficit for global deduction (4BC) cannot exceed 10'700€")
@@ -211,11 +222,11 @@ class TaxSimulator:
             self.flags[TaxInfoFlag.RENTAL_DEFICIT_CARRYOVER] = f"{final_deficit_carryover}€"
 
     def compute_furnished_rentals(self):
-        # This corresponds to "Non professional furnished rentals" (LMNP in French, for "Location meublées non
-        # professoinnelles"). Only "micro" incomes are supported (i.e. less than 72'600€ income per year). More details:
+        # This corresponds to "Non-professional furnished rentals" (LMNP in French, for "Location meublées non
+        # professionnelles"). Only "micro" incomes are supported (i.e. less than 72'600€ income per year). More details:
         # https://www.impots.gouv.fr/sites/default/files/media/1_metier/1_particulier/EV/1_declarer/141_autres_revenus/eco-collabo-fiscal-logement-meuble.pdf
-        incomes = self.state[TaxField.LMNP_MICRO_INCOME_1_5ND]\
-                  + self.state[TaxField.LMNP_MICRO_INCOME_2_5OD]\
+        incomes = self.state[TaxField.LMNP_MICRO_INCOME_1_5ND] \
+                  + self.state[TaxField.LMNP_MICRO_INCOME_2_5OD] \
                   + self.state[TaxField.LMNP_MICRO_INCOME_3_5PD]
         incomes_rebate = max(incomes * 0.5, 305)  # minimum rebate is 305e
         self.state[TaxField.TAXABLE_LMNP_INCOME] = max(incomes - incomes_rebate, 0)
@@ -242,9 +253,8 @@ class TaxSimulator:
                 tax_increment = round(incomes_2_10p - fees_10p_ceiling)
                 self.flags[TaxInfoFlag.FEE_REBATE_INCOME_2] = f"taxable income += {tax_increment}€"
             net_income += incomes_2 - fee_deduction_2
-        self.state[TaxField.TOTAL_NET_INCOME] = net_income \
-                                                + self.state[TaxField.RENTAL_INCOME_RESULT] \
-                                                + self.state[TaxField.TAXABLE_LMNP_INCOME]
+        self.state[TaxField.TOTAL_NET_INCOME] = net_income + self.state[TaxField.RENTAL_INCOME_RESULT] \
+            + self.state[TaxField.TAXABLE_LMNP_INCOME]
 
     def compute_taxable_income(self):
         # TODO take capping into account
@@ -263,10 +273,10 @@ class TaxSimulator:
         self.state[TaxField.INVESTMENT_INCOME_TAX] = tax_round(self.state[TaxField.TAXABLE_INVESTMENT_INCOME] * 0.128)
 
     def compute_reference_fiscal_income(self):
-        self.state[TaxField.REFERENCE_FISCAL_INCOME] = max(self.state[TaxField.TOTAL_NET_INCOME]\
-                                                    + self.state[TaxField.TAXABLE_INVESTMENT_INCOME]\
-                                                    + self.state[TaxField.CAPITAL_GAIN_3VG],
-                                                    0)
+        self.state[TaxField.REFERENCE_FISCAL_INCOME] = max(self.state[TaxField.TOTAL_NET_INCOME] \
+                                                           + self.state[TaxField.TAXABLE_INVESTMENT_INCOME] \
+                                                           + self.state[TaxField.CAPITAL_GAIN_3VG],
+                                                           0)
 
     def _compute_income_tax(self, household_shares):
         # https://www.service-public.fr/particuliers/vosdroits/F1419
@@ -281,7 +291,7 @@ class TaxSimulator:
         income_accounted_for = thresholds[0]
         bucket_n = 0
         marginal_tax_rate = 0
-        while ((taxable_income > income_accounted_for) and (bucket_n < len(thresholds) - 1)):
+        while (taxable_income > income_accounted_for) and (bucket_n < len(thresholds) - 1):
             self.maybe_print("Accounted for: ", income_accounted_for)
             self.maybe_print("In bucket ", bucket_n)
             bucket_amount = thresholds[bucket_n + 1] - thresholds[bucket_n]
@@ -312,18 +322,20 @@ class TaxSimulator:
         # apply capping of the family quotient benefices, see
         # https://www.economie.gouv.fr/particuliers/quotient-familial
         family_quotient_benefices = tax_without_family_quotient - tax_with_family_quotient
-        family_quotient_benefices_capping = capping_parameter * ((household_shares - household_shares_without_family_quotient) * 2)
+        family_quotient_benefices_capping = capping_parameter * (
+                (household_shares - household_shares_without_family_quotient) * 2)
         self.maybe_print("Family quotient benefices: ", family_quotient_benefices, "  ;  Capped to: ",
                          family_quotient_benefices_capping)
-        if (family_quotient_benefices > family_quotient_benefices_capping):
+        if family_quotient_benefices > family_quotient_benefices_capping:
             additional_taxes = family_quotient_benefices - family_quotient_benefices_capping
             self.flags[
                 TaxInfoFlag.FAMILY_QUOTIENT_CAPPING] = f"tax += {tax_round(additional_taxes, 2)}€"
             final_income_tax = tax_without_family_quotient - family_quotient_benefices_capping
         else:
             final_income_tax = tax_with_family_quotient
-        self.state[TaxField.SIMPLE_TAX_RIGHT] = tax_round(final_income_tax) # "Droits simples" in French
-        self.state[TaxField.TAX_BEFORE_REDUCTIONS] = self.state[TaxField.SIMPLE_TAX_RIGHT] + self.state[TaxField.INVESTMENT_INCOME_TAX]
+        self.state[TaxField.SIMPLE_TAX_RIGHT] = tax_round(final_income_tax)  # "Droits simples" in French
+        self.state[TaxField.TAX_BEFORE_REDUCTIONS] = self.state[TaxField.SIMPLE_TAX_RIGHT] + self.state[
+            TaxField.INVESTMENT_INCOME_TAX]
 
     # Computes all tax reductions. Currently supported:
     # * donations (7UD)
@@ -354,9 +366,9 @@ class TaxSimulator:
         subscription_capping = 100000 if self.state[TaxField.MARRIED] else 50000
         pme_capital_subscription_before = min(self.state[TaxField.SME_CAPITAL_SUBSCRIPTION_7CF], subscription_capping)
         pme_capital_subscription_after = min(self.state[TaxField.SME_CAPITAL_SUBSCRIPTION_7CH],
-                                                   subscription_capping - pme_capital_subscription_before)
-        self.state[TaxField.SME_SUBSCRIPTION_REDUCTION] = pme_capital_subscription_before * 0.18\
-                                                   + pme_capital_subscription_after * 0.25
+                                             subscription_capping - pme_capital_subscription_before)
+        self.state[TaxField.SME_SUBSCRIPTION_REDUCTION] = pme_capital_subscription_before * 0.18 \
+            + pme_capital_subscription_after * 0.25
 
     def compute_tax_credits(self):
         # Daycare fees, capped & rated at 50%. See:
@@ -378,10 +390,13 @@ class TaxSimulator:
             if fees_key in self.state:
                 nb_children_with_daycare_fees += 1
                 if nb_children_with_daycare_fees > nb_children_lt_6yo:
-                    raise Exception(f"You are declaring more children daycare fees ({nb_children_with_daycare_fees}) than you have children below 6y old ({nb_children_lt_6yo})")
+                    raise Exception(f"You are declaring more children daycare fees ({nb_children_with_daycare_fees}) "
+                                    f"than you have children below 6y old ({nb_children_lt_6yo})")
                 total_fees += min(self.state[fees_key], 2300)
-                fees_capped_out += max(self.state[fees_key]-2300, 0)
-        self.flags[TaxInfoFlag.CHILD_DAYCARE_CREDIT_CAPPING] = f"capped to {total_fees}€ (originally {total_fees+fees_capped_out}€)"
+                fees_capped_out += max(self.state[fees_key] - 2300, 0)
+        self.flags[
+            TaxInfoFlag.CHILD_DAYCARE_CREDIT_CAPPING] = f"capped to {total_fees}€ (originally " \
+                                                        f"{total_fees + fees_capped_out}€)"
         self.state[TaxField.CHILDREN_DAYCARE_TAXCREDIT] = total_fees * 0.5
 
         # services at home (cleaning etc.)
@@ -389,7 +404,7 @@ class TaxSimulator:
         home_services_capping = min(12000 + 1500 * self.state[TaxField.NB_CHILDREN], 15000)
         home_services = self.state[TaxField.HOME_SERVICES_7DB]
         if home_services > home_services_capping:
-            self.flags[TaxInfoFlag.HOME_SERVICES_CREDIT_CAPPING] = f"capped to {home_services_capping}€"\
+            self.flags[TaxInfoFlag.HOME_SERVICES_CREDIT_CAPPING] = f"capped to {home_services_capping}€" \
                                                                    + f" (originally {home_services}€)"
         capped_home_services = min(home_services, home_services_capping)
         self.state[TaxField.HOME_SERVICES_TAXCREDIT] = capped_home_services * 0.5
@@ -403,22 +418,21 @@ class TaxSimulator:
         # https://www.service-public.fr/particuliers/vosdroits/F31179
         all_taxes_before_capping = self.state[TaxField.TAX_BEFORE_REDUCTIONS] \
                                    - self.state[TaxField.CHARITY_REDUCTION]
-        taxes_with_reduction_before_capping = all_taxes_before_capping \
-                                              - self.state[TaxField.SME_SUBSCRIPTION_REDUCTION]
-        partial_taxes_2 = max(taxes_with_reduction_before_capping, 0) \
-                          - self.state[TaxField.CHILDREN_DAYCARE_TAXCREDIT] \
-                          - self.state[TaxField.HOME_SERVICES_TAXCREDIT]
+        taxes_with_reduction_before_capping = all_taxes_before_capping - self.state[TaxField.SME_SUBSCRIPTION_REDUCTION]
+        partial_taxes_2 = max(taxes_with_reduction_before_capping, 0) - self.state[TaxField.CHILDREN_DAYCARE_TAXCREDIT]\
+            - self.state[TaxField.HOME_SERVICES_TAXCREDIT]
 
         fiscal_advantages = all_taxes_before_capping - partial_taxes_2
         if fiscal_advantages > 10000:
             self.flags[TaxInfoFlag.GLOBAL_FISCAL_ADVANTAGES] = f"capped to 10'000€ (originally {fiscal_advantages}€)"
             net_taxes_after_global_capping = all_taxes_before_capping - 10000
         else:
-            self.flags[TaxInfoFlag.GLOBAL_FISCAL_ADVANTAGES] = f"{fiscal_advantages}€" +\
+            self.flags[TaxInfoFlag.GLOBAL_FISCAL_ADVANTAGES] = f"{fiscal_advantages}€" + \
                                                                f" (uncapped, {10000 - fiscal_advantages}€ from ceiling)"
             net_taxes_after_global_capping = partial_taxes_2
 
-        net_taxes = net_taxes_after_global_capping + self.state[TaxField.CAPITAL_GAIN_TAX] - self.state[TaxField.INTEREST_TAX_ALREADY_PAID_2CK]
+        net_taxes = net_taxes_after_global_capping + self.state[TaxField.CAPITAL_GAIN_TAX] - self.state[
+            TaxField.INTEREST_TAX_ALREADY_PAID_2CK]
         self.state[TaxField.NET_TAXES] = tax_round(net_taxes, 2)
 
     def compute_social_taxes(self):

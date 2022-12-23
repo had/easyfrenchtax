@@ -172,15 +172,15 @@ def test_reset_by_stocktype(stock_helper_with_plan):
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
     assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 450
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
-    stock_helper_with_plan.reset(stock_types="espp")
+    stock_helper_with_plan.reset(stock_types=["espp"])
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
     assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
-    stock_helper_with_plan.reset(stock_types="stockoption")
+    stock_helper_with_plan.reset(stock_types=["stockoption"])
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
     assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
-    stock_helper_with_plan.reset(stock_types="rsu")
+    stock_helper_with_plan.reset(stock_types=["rsu"])
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
     assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 from currency_converter import CurrencyConverter
@@ -5,18 +6,50 @@ from collections import defaultdict, namedtuple
 import csv
 import glob
 
-StockGroup = namedtuple("StockGroup",
-                        ['owner', 'count', 'available', 'acq_price', 'acq_price_eur', 'acq_date', 'plan_name'],
-                        defaults=[None, ""])
-RsuPlan = namedtuple("RsuPlan", ["name", "grant_date", "taxation_scheme", "stock_symbol", "currency"])
-SaleEvent = namedtuple("SaleEvent", ["symbol", "stock_type", "nb_stocks_sold", "unit_acquisition_price", "sell_date",
-                                     "sell_price_eur", "sell_details", "selling_fees"])
+
+@dataclass
+class StockGroup:
+    owner: int  # taxpayer 1 or 2, typically, for tax statements
+    count: int
+    available: int
+    acq_price: float
+    acq_price_eur: float
+    acq_date: date
+    plan_name: str
+
+
+@dataclass
+class RsuPlan:
+    name: str
+    grant_date: date
+    taxation_scheme: str
+    stock_symbol: str
+    currency: str
+
+
+@dataclass
+class SaleEvent:
+    symbol: str
+    stock_type: str  # TODO change to enum
+    nb_stocks_sold: int
+    unit_acquisition_price: float
+    sell_date: date
+    sell_price_eur: float
+    sell_details: list[dict[str, any]]  # TODO typing of details
+    selling_fees: float
+
 
 # currency converter (USD/EUR in particular)
 cc = CurrencyConverter(fallback_on_wrong_date=True, fallback_on_missing_rate=True)
 
 
 class StockHelper:
+    rsu_plans: dict[str, RsuPlan]
+    rsus: dict[str, list[StockGroup]]  # TODO integrate list of RSUs to RsuPlan
+    espp_stocks: dict[str, list[StockGroup]]
+    stock_sales: dict[int, list[SaleEvent]]
+    weighted_average_prices: dict[tuple[str, date], float]
+
     def __init__(self):
         self.rsu_plans = {}
         self.rsus = defaultdict(list)
@@ -25,27 +58,28 @@ class StockHelper:
         self.stock_sales = defaultdict(list)
         self.weighted_average_prices = {}  # "prix moyen pondéré" in euro ; keyed by a tuple (plan_name, acq_date)
 
-    def reset(self, stock_types="espp;stockoption;rsu", symbols=None):
-        stock_types_list = stock_types.split(";")
+    # TODO: this seems unused, consider removing
+    def reset(self, stock_types: list[str] = ("espp", "stockoption", "rsu"), symbols: list[str] = None) -> None:
         for sales in self.stock_sales.values():
             sales[:] = [s for s in sales if
-                        (symbols and s.symbol not in symbols) or (s.stock_type not in stock_types_list)]
+                        (symbols and s.symbol not in symbols) or (s.stock_type not in stock_types)]
         self.weighted_average_prices.clear()
         stock_types_mapping = {
             "espp": self.espp_stocks,
             "stockoption": self.stock_options,
             "rsu": self.rsus
         }
-        for stock_type in [stock_types_mapping[st] for st in stock_types_list]:
+        for stock_type in [stock_types_mapping[st] for st in stock_types]:
             if not symbols:
                 stocks_subset = stock_type.values()
             else:
                 stocks_subset = [stock_type[symbol] for symbol in symbols]
             for stocks in stocks_subset:
                 for i, s in enumerate(stocks):
-                    stocks[i] = s._replace(available=s.count)
+                    stocks[i].available = s.count
 
-    def summary(self):
+    # TODO: this seems unused, consider removing
+    def summary(self) -> dict[str, dict[str, int]]:
         summary = defaultdict(lambda: defaultdict(int))
         for symbol, rsus in self.rsus.items():
             for rsu in rsus:
@@ -58,10 +92,11 @@ class StockHelper:
                 summary[symbol]["StockOption"] += stockoption.count
         return summary
 
-    ####### RSU related load functions #######
-    def _determine_rsu_plans_type(grant_date):
+    # ----- RSU related load functions ------
+    @staticmethod
+    def _determine_rsu_plans_type(grant_date: date) -> str:
         if grant_date <= date(2012, 9, 27):
-            return "2007"
+            return "2007"  # TODO replace with an enum
         elif grant_date <= date(2015, 8, 8):
             return "2012"
         elif grant_date <= date(2017, 1, 1):
@@ -71,17 +106,18 @@ class StockHelper:
         else:
             return "2018"
 
-    def rsu_plan(self, name, grant_date, symbol, currency):
+    def rsu_plan(self, name: str, grant_date: date, symbol: str, currency: str) -> None:
         if name not in self.rsu_plans:
             self.rsu_plans[name] = RsuPlan(
                 name=name,
-                grant_date=date,
+                grant_date=grant_date,
                 taxation_scheme=StockHelper._determine_rsu_plans_type(grant_date),
                 stock_symbol=symbol,
                 currency=currency
             )
 
-    def rsu_vesting(self, owner, symbol, plan_name, count, acq_date, acq_price, currency=None):
+    def rsu_vesting(self, owner: int, symbol: str, plan_name: str, count: int, acq_date: date, acq_price: float,
+                    currency: str = None) -> None:
         if not currency:
             currency = self.rsu_plans[plan_name].currency
         self.rsus[symbol].append(StockGroup(
@@ -95,7 +131,7 @@ class StockHelper:
         ))
         self.rsus[symbol].sort(key=lambda a: a.acq_date)
 
-    def add_espp(self, owner, symbol, count, acq_date, acq_price, currency):
+    def add_espp(self, owner: int, symbol: str, count: int, acq_date: date, acq_price: float, currency: str) -> None:
         self.espp_stocks[symbol].append(StockGroup(
             owner=owner,
             count=count,
@@ -107,7 +143,8 @@ class StockHelper:
         ))
         self.espp_stocks[symbol].sort(key=lambda a: a.acq_date)
 
-    def add_stockoptions(self, owner, symbol, plan_name, count, vesting_date, strike_price, currency):
+    def add_stockoptions(self, owner: int, symbol: str, plan_name: str, count: int, vesting_date: date,
+                         strike_price: float, currency: str) -> None:
         self.stock_options[symbol].append(StockGroup(
             owner=owner,
             count=count,
@@ -120,7 +157,8 @@ class StockHelper:
         ))
         self.stock_options[symbol].sort(key=lambda a: a.acq_date)
 
-    def parse_tsv_info(self, tsv_files='personal_data/*.tsv'):
+    # turn into static constructor?
+    def parse_tsv_info(self, tsv_files: str = 'personal_data/*.tsv') -> None:
         def parse_date(some_date):
             try:
                 return datetime.strptime(some_date, "%d %b %Y").date()
@@ -154,7 +192,7 @@ class StockHelper:
                         self.add_stockoptions(owner, symbol, plan_name, acq_count, acq_date, acq_price, currency)
 
     ####### stock selling related load functions #######
-    def compute_weighted_average_prices(self, symbol, up_to):
+    def compute_weighted_average_prices(self, symbol: str, up_to: date):
         # There are complex rules of computing weighted average price (WAP, or PMP in French), see:
         # https://bofip.impots.gouv.fr/bofip/3619-PGP.html/identifiant=BOI-RPPM-PVBMI-20-10-20-40-20191220#Regle_du_prix_moyen_pondere_10
         # Basically, we need to compute a weighted average of all *available* stock, up to the provided date (sell date)
@@ -178,7 +216,8 @@ class StockHelper:
             self.weighted_average_prices[(acq.plan_name, acq.acq_date)] = weighted_average_price
         return weighted_average_price
 
-    def sell_stockoptions(self, symbol, nb_stocks, sell_date, sell_price, fees, currency="EUR"):
+    def sell_stockoptions(self, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
+                          currency: str = "EUR"):
         if nb_stocks == 0:
             return
         sell_details = []
@@ -199,7 +238,7 @@ class StockHelper:
                 "acq_date": acq.acq_date
             })
             # update the rsu data with new availability (tuples are immutable, so replace with new one)
-            self.stock_options[symbol][i] = acq._replace(available=acq.available - sell_from_acq)
+            self.stock_options[symbol][i].available = acq.available - sell_from_acq
             to_sell -= sell_from_acq
             if to_sell == 0:
                 break
@@ -217,7 +256,8 @@ class StockHelper:
         ))
         return ((nb_stocks - to_sell), None, sell_details)
 
-    def sell_espp(self, symbol, nb_stocks, sell_date, sell_price, fees, currency="EUR"):
+    def sell_espp(self, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
+                  currency: str = "EUR"):
         if nb_stocks == 0:
             return
         sell_details = []
@@ -237,7 +277,7 @@ class StockHelper:
             })
             total_acquisition_price += acq.acq_price_eur * sell_from_acq
             # update the rsu data with new availability (tuples are immutable, so replace with new one)
-            self.espp_stocks[symbol][i] = acq._replace(available=acq.available - sell_from_acq)
+            self.espp_stocks[symbol][i].available = acq.available - sell_from_acq
             to_sell -= sell_from_acq
             if to_sell == 0:
                 break
@@ -258,7 +298,8 @@ class StockHelper:
         return ((nb_stocks - to_sell), average_acquisition_price, sell_details)
 
     # TODO differentiate by stock_symbol
-    def sell_rsus(self, symbol, nb_stocks, sell_date, sell_price, fees, currency="EUR"):
+    def sell_rsus(self, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
+                  currency: str = "EUR"):
         if nb_stocks == 0:
             return
         sell_details = []
@@ -285,7 +326,7 @@ class StockHelper:
                 "acq_date": acq.acq_date
             })
             # update the rsu data with new availability (tuples are immutable, so replace with new one)
-            self.rsus[symbol][i] = acq._replace(available=acq.available - sell_from_acq)
+            self.rsus[symbol][i].available = acq.available - sell_from_acq
             to_sell -= sell_from_acq
             if to_sell == 0:
                 break
@@ -307,7 +348,7 @@ class StockHelper:
 
     # the bible of acquisition and capital gain tax (version 2021):
     # https://www.impots.gouv.fr/portail/www2/fichiers/documentation/brochure/ir_2021/pdf_som/09-plus_values_141a158.pdf
-    def compute_acquisition_gain_tax(self, year):
+    def compute_acquisition_gain_tax(self, year: int):
         sell_events = self.stock_sales[year]
         taxable_gain = 0  # this would contribute to box 1TZ
         rebates = 0  # this would contribute to box 1UZ
@@ -368,7 +409,7 @@ class StockHelper:
 
     # the other bible of capital gain tax (aka notice for form 2074):
     # # https://www.impots.gouv.fr/portail/files/formulaires/2074/2021/2074_3442.pdf
-    def compute_capital_gain_tax(self, year):
+    def compute_capital_gain_tax(self, year: int):
         tax_report = {
             "2074": [],
             "2042C": {}
@@ -404,6 +445,7 @@ class StockHelper:
             tax_report["2042C"]["capital_loss_3VH"] = -total_capital_gain
         return tax_report
 
+    @staticmethod
     def helper_capital_gain_tax(tax_report):
         form_2042c = tax_report["2042C"]
         print(f"Form 2042C:")
