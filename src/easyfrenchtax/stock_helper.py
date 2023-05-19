@@ -425,8 +425,8 @@ class StockHelper:
             sell_event_report["sell_price_514"] = sale.sell_price_eur
             sell_event_report["sold_stock_units_515"] = sale.nb_stocks_sold
             global_selling_proceeds = sale.sell_price_eur * sale.nb_stocks_sold
-            sell_event_report["global_selling_proceeds_516"] = global_selling_proceeds
-            sell_event_report["selling_fees_517"] = sale.selling_fees
+            sell_event_report["global_selling_proceeds_516"] = round(global_selling_proceeds)
+            sell_event_report["selling_fees_517"] = round(sale.selling_fees)
             net_selling_proceeds = global_selling_proceeds - sale.selling_fees
             sell_event_report["net_selling_proceeds_518"] = net_selling_proceeds
             sell_event_report["unit_acquisition_price_520"] = sale.unit_acquisition_price
