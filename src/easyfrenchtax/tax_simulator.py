@@ -113,6 +113,14 @@ year_tax_parameters: dict[int, TaxParameters] = {
         fees_10p_deduction_ceiling=12829,
         fees_10p_deduction_floor=448
     ),
+    2023: TaxParameters(
+        family_quotient_benefices_capping=1678,
+        slices_thresholds=[10777, 27478, 78570, 168994],
+        slices_rates=[0.11, 0.30, 0.41, 0.45],
+        fees_10p_deduction_ceiling=13522,
+        fees_10p_deduction_floor=472
+    ),
+
 }
 
 
