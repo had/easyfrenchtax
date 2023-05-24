@@ -44,11 +44,15 @@ class TaxField(Enum):
     RENTAL_INCOME_GLOBAL_DEFICIT_4BC = "rental_income_global_deficit_4BC"
     PREVIOUS_RENTAL_INCOME_DEFICIT_4BD = "previous_rental_income_deficit_4BD"
     SIMPLIFIED_RENTAL_INCOME_4BE = "simplified_rental_income_4BE"
+    WOODCUT_INCOME_1_5HD = "woodcut_income_1_5HD"
+    WOODCUT_INCOME_2_5ID = "woodcut_income_2_5ID"
+    WOODCUT_INCOME_3_5JD = "woodcut_income_3_5JD"
     LMNP_MICRO_INCOME_1_5ND = "lmnp_micro_income_1_5nd"
     LMNP_MICRO_INCOME_2_5OD = "lmnp_micro_income_2_5od"
     LMNP_MICRO_INCOME_3_5PD = "lmnp_micro_income_3_5pd"
     PER_TRANSFERS_1_6NS = "per_transfers_1_6NS"
     PER_TRANSFERS_2_6NT = "per_transfers_2_6NT"
+    # TODO add PERO contributions (work mandatory retirement plan) 6QS/6QT/6QU
     SME_CAPITAL_SUBSCRIPTION_7CF = "sme_capital_subscription_7CF"
     SME_CAPITAL_SUBSCRIPTION_7CH = "sme_capital_subscription_7CH"
     HOME_SERVICES_7DB = "home_services_7DB"
@@ -65,6 +69,7 @@ class TaxField(Enum):
     NB_CHILDREN_LT_6YO = "nb_children_lt_6yo"
     RENTAL_INCOME_RESULT = "rental_income_result"
     TAXABLE_LMNP_INCOME = "taxable_lmnp_income"
+    AGRICULTURAL_INCOME = "agricultural_income"
     DEDUCTION_10P_1 = "deduction_10p_1"
     DEDUCTION_10P_2 = "deduction_10p_2"
     TAXABLE_INVESTMENT_INCOME = "taxable_investment_income"
@@ -239,6 +244,15 @@ class TaxSimulator:
         incomes_rebate = max(incomes * 0.5, 305)  # minimum rebate is 305e
         self.state[TaxField.TAXABLE_LMNP_INCOME] = max(incomes - incomes_rebate, 0)
 
+    def compute_agricultural_income(self):
+        # IMPORTANT: these 3 fields about woodcut income (5HD/5ID/5JD) are very poory explained. The decision to gather
+        # them into an "agricultural income" that is taxed progressively like an income tax comes from checking the
+        # official french tax simulator. THIS MIGHT BE COMPLETELY WRONG.
+        incomes = self.state[TaxField.WOODCUT_INCOME_1_5HD] \
+                  + self.state[TaxField.WOODCUT_INCOME_2_5ID] \
+                  + self.state[TaxField.WOODCUT_INCOME_3_5JD]
+        self.state[TaxField.AGRICULTURAL_INCOME] = incomes
+
     def compute_net_income(self):
         incomes_1 = self.state[TaxField.SALARY_1_1AJ] + self.state[TaxField.EXERCISE_GAIN_1_1TT]
         incomes_2 = self.state[TaxField.SALARY_2_1BJ] + self.state[TaxField.EXERCISE_GAIN_2_1UT]
@@ -262,7 +276,7 @@ class TaxSimulator:
                 self.flags[TaxInfoFlag.FEE_REBATE_INCOME_2] = f"taxable income += {tax_increment}€"
             net_income += incomes_2 - fee_deduction_2
         self.state[TaxField.TOTAL_NET_INCOME] = net_income + self.state[TaxField.RENTAL_INCOME_RESULT] \
-            + self.state[TaxField.TAXABLE_LMNP_INCOME]
+            + self.state[TaxField.TAXABLE_LMNP_INCOME] + self.state[TaxField.AGRICULTURAL_INCOME]
 
     def compute_taxable_income(self):
         # TODO take capping into account
