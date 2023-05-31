@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 from currency_converter import CurrencyConverter
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 import csv
 import glob
 
@@ -21,7 +21,7 @@ class StockGroup:
 @dataclass
 class RsuPlan:
     name: str
-    grant_date: date
+    approval_date: date
     taxation_scheme: str
     stock_symbol: str
     currency: str
@@ -94,24 +94,27 @@ class StockHelper:
 
     # ----- RSU related load functions ------
     @staticmethod
-    def _determine_rsu_plans_type(grant_date: date) -> str:
-        if grant_date <= date(2012, 9, 27):
+    def _determine_rsu_plans_type(approval_date: date) -> str:
+        if approval_date <= date(2012, 9, 27):
             return "2007"  # TODO replace with an enum
-        elif grant_date <= date(2015, 8, 8):
+        elif approval_date <= date(2015, 8, 8):
             return "2012"
-        elif grant_date <= date(2017, 1, 1):
+        elif approval_date <= date(2017, 1, 1):
             return "2015"
-        elif grant_date <= date(2018, 1, 1):
+        elif approval_date <= date(2018, 1, 1):
             return "2017"
         else:
             return "2018"
 
-    def rsu_plan(self, name: str, grant_date: date, symbol: str, currency: str) -> None:
+    ## IMPORTANT! approval_date here is used to determine the taxation scheme
+    # (Macron I, Macron II, etc.) so it needs to be the date where the plan was
+    # approved by the shareholders, NOT the grant date.
+    def rsu_plan(self, name: str, approval_date: date, symbol: str, currency: str) -> None:
         if name not in self.rsu_plans:
             self.rsu_plans[name] = RsuPlan(
                 name=name,
-                grant_date=grant_date,
-                taxation_scheme=StockHelper._determine_rsu_plans_type(grant_date),
+                approval_date=approval_date,
+                taxation_scheme=StockHelper._determine_rsu_plans_type(approval_date),
                 stock_symbol=symbol,
                 currency=currency
             )
