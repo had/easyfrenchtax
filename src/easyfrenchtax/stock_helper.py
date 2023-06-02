@@ -241,42 +241,33 @@ class StockHelper:
         sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date=sell_date), 2)
         to_sell = nb_stocks
         stocks_before_sell_date = [r for r in self.espp_stocks[symbol] if r.acq_date < sell_date]
-        total_acquisition_price = 0
         for i, acq in enumerate(stocks_before_sell_date):
             if acq.available == 0:
                 continue
             sell_from_acq = min(to_sell, acq.available)
-            sell_details.append({
-                "plan_name": acq.plan_name,
-                "count": sell_from_acq,
-                "acq_price": acq.acq_price,  # keep price in original currency here
-                "acq_date": acq.acq_date
-            })
-            total_acquisition_price += acq.acq_price_eur * sell_from_acq
-            # update the rsu data with new availability (tuples are immutable, so replace with new one)
             self.espp_stocks[symbol][i].available = acq.available - sell_from_acq
             to_sell -= sell_from_acq
+            self.stock_sales[sell_date.year].append(SaleEvent(
+                symbol=symbol,
+                stock_type="espp",
+                nb_stocks_sold=sell_from_acq,
+                unit_acquisition_price=round(acq.acq_price_eur, 2),
+                sell_date=sell_date,
+                sell_price_eur=sell_price_eur,
+                sell_details=[{
+                    "plan_name": acq.plan_name,
+                    "count": sell_from_acq,
+                    "acq_price": acq.acq_price,  # keep price in original currency here
+                    "acq_date": acq.acq_date
+                }],
+                selling_fees=0  # not sure how to handle this
+            ))
             if to_sell == 0:
                 break
         if to_sell > 0:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have")
             return (0, 0, [])
-        # WARNING: this way of computing is wrong, we should add one SaleEvent per group of stocks bought
-        # FIXME
-        return 0
-
-        average_acquisition_price = total_acquisition_price / (nb_stocks - to_sell)
-        self.stock_sales[sell_date.year].append(SaleEvent(
-            symbol=symbol,
-            stock_type="espp",
-            nb_stocks_sold=nb_stocks - to_sell,
-            unit_acquisition_price=round(average_acquisition_price, 2),
-            sell_date=sell_date,
-            sell_price_eur=sell_price_eur,
-            sell_details=sell_details,
-            selling_fees=round(cc.convert(fees, currency, "EUR", date=sell_date), 2)
-        ))
-        return ((nb_stocks - to_sell), average_acquisition_price, sell_details)
+        return (nb_stocks - to_sell)
 
     def sell_rsus(self, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
                   currency: str = "EUR") -> int:
@@ -301,7 +292,7 @@ class StockHelper:
                 symbol=symbol,
                 stock_type="rsu",
                 nb_stocks_sold=sell_from_acq,
-                unit_acquisition_price=round(acq.acq_price_eur,2),
+                unit_acquisition_price=round(acq.acq_price_eur, 2),
                 sell_date=sell_date,
                 sell_price_eur=sell_price_eur,
                 sell_details=[{
@@ -311,7 +302,7 @@ class StockHelper:
                     "acq_price_currency": "TODO",  # TODO
                     "acq_date": acq.acq_date
                 }],
-                selling_fees=0  # not sure how to handle this for RSUs
+                selling_fees=0  # not sure how to handle this
             ))
             # update the rsu data with new availability (tuples are immutable, so replace with new one)
             self.rsus[symbol][i].available = acq.available - sell_from_acq

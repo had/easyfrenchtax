@@ -1,4 +1,4 @@
-import pprint
+from collections.abc import Callable
 
 import pytest
 from src.easyfrenchtax import StockHelper
@@ -20,22 +20,20 @@ def stock_helper_with_plan():
     stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2019, 1, 28), 23)
     stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2019, 2, 28), 24)
     stock_helper.rsu_plan("Pineapple", date(2016, 6, 29), "PZZA", "USD")
-    # stock_helper.rsu_vesting(1, "PZZA", "Pineapple", 312, date(2020, 3, 28), 7.43)
-    # stock_helper.rsu_vesting(1, "PZZA", "Pineapple", 313, date(2020, 6, 28), 9.84)
-    # stock_helper.rsu_vesting(1, "PZZA", "Pineapple", 312, date(2020, 9, 28), 10.40)
     stock_helper.rsu_vesting(1, "PZZA", "Pineapple", 313, date(2020, 12, 28), 20.84)
     stock_helper.rsu_vesting(1, "PZZA", "Pineapple", 312, date(2021, 3, 28), 27.44)
     stock_helper.rsu_vesting(1, "PZZA", "Pineapple", 313, date(2021, 6, 28), 37.25)
     stock_helper.rsu_plan("Pepperoni", date(2017, 7, 28), "PZZA", "USD")
     stock_helper.rsu_vesting(1, "PZZA", "Pepperoni", 398, date(2020, 12, 16), 18.75)
     stock_helper.rsu_vesting(1, "PZZA", "Pepperoni", 133, date(2021, 1, 26), 19.13)
-    stock_helper.add_espp(1, "BUD", 500, date(2019, 1, 15), 22, "USD")
+    stock_helper.add_espp(1, "BUD", 200, date(2019, 1, 15), 22, "USD")
+    stock_helper.add_espp(1, "BUD", 300, date(2019, 7, 15), 19, "USD")
     stock_helper.add_stockoptions(1, "PZZA", "SO", 150, date(2018, 1, 15), 5, "USD")
     return stock_helper
 
 
 @pytest.fixture
-def convert_fn():
+def convert_fn() -> Callable[[float, str, str, date], float]:
     cc = CurrencyConverter(fallback_on_wrong_date=True)
     return cc.convert
 
@@ -54,12 +52,12 @@ def test_summary(stock_helper_with_plan):
 def test_rsu_sale(stock_helper_with_plan):
     assert sum([r.available for r in stock_helper_with_plan.rsus["CAKE"]]) == 320
     final_count_1 = stock_helper_with_plan.sell_rsus("CAKE", 200, date(2019, 6, 3), sell_price=22, fees=0,
-                                                           currency="USD")
+                                                     currency="USD")
     assert final_count_1 == 200
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 40
     assert all([r.available == 10 for r in stock_helper_with_plan.rsus["CAKE"][1:]])
     final_count_2 = stock_helper_with_plan.sell_rsus("CAKE", 200, date(2019, 6, 3), sell_price=22, fees=0,
-                                                           currency="USD")
+                                                     currency="USD")
     assert final_count_2 == 120, "Cannot sell more than we have"
 
 
@@ -84,17 +82,18 @@ def test_rsu_acquisition_gain_tax_rebates(stock_helper_with_plan):
     assert taxes["exercise_gain_1_1TT"] == 0
     assert taxes["exercise_gain_2_1UT"] == 0
 
+
 def test_rsu_capital_gain_simple(stock_helper_with_plan):
     final_count = stock_helper_with_plan.sell_rsus("CAKE", 200, date(2021, 8, 2),
-                                     sell_price=28, fees=0, currency="USD")
+                                                   sell_price=28, fees=0, currency="USD")
     assert final_count == 200
     report = stock_helper_with_plan.compute_capital_gain_tax(2021)
-    print(report)
     assert True
+
 
 def test_rsu_example(stock_helper_with_plan):
     final_count = stock_helper_with_plan.sell_rsus("PZZA", 844, date(2021, 2, 12),
-                                     sell_price=31.52, fees=0, currency="USD")
+                                                   sell_price=31.52, fees=0, currency="USD")
     assert final_count == 844
     report_ag = stock_helper_with_plan.compute_acquisition_gain_tax(2021)
     assert report_ag['taxable_acquisition_gain_1TZ'] == 13556
@@ -115,23 +114,34 @@ def test_rsu_example(stock_helper_with_plan):
     stock_helper_with_plan.helper_capital_gain_tax(report_cg)
 
 
-# WARNING: the way of computing with average acquisition price is not correct, need to rework it
-# FIXME
-# def test_espp_sale(stock_helper_with_plan, convert_fn):
-#     sell_price = 28
-#     final_count, unit_acquisition_price, sell = stock_helper_with_plan.sell_espp("BUD", 200, date(2021, 8, 2),
-#                                                                                  sell_price=sell_price, fees=0,
-#                                                                                  currency="USD")
-#     agt = stock_helper_with_plan.compute_acquisition_gain_tax(2021)
-#     cgt = stock_helper_with_plan.compute_capital_gain_tax(2021)
-#
-#     sell_price_eur = convert_fn(sell_price, "USD", "EUR", date(2021, 8, 2))
-#     assert final_count == 200
-#     assert unit_acquisition_price == stock_helper_with_plan.espp_stocks["BUD"][0].acq_price_eur
-#     assert not any(agt.values()), "ESPP should not yield acquisition gain (thus no acquisition gain tax)"
-#     expected_capital_gain = round(200 * (round(sell_price_eur, 2) - round(unit_acquisition_price, 2)))
-#     assert cgt["2042C"]["capital_gain_3VG"] == expected_capital_gain, \
-#         "Capital gain tax should be compliant"
+def test_espp_sale(convert_fn):
+    stock_helper = StockHelper()
+    stock_helper.add_espp(1, "BUD", 200, date(2019, 1, 15), 22, "USD")
+    stock_helper.add_espp(1, "BUD", 300, date(2019, 7, 15), 19, "USD")
+    sell_price = 28
+    final_count = stock_helper.sell_espp("BUD", 300, date(2021, 8, 2), sell_price=sell_price, fees=0, currency="USD")
+    assert final_count == 300
+
+    report_ag = stock_helper.compute_acquisition_gain_tax(2021)
+    assert not any(report_ag.values()), "ESPP should not yield acquisition gain (thus no acquisition gain tax)"
+
+    report_cg = stock_helper.compute_capital_gain_tax(2021)
+    report_2042C = report_cg['2042C']
+    report_2074 = report_cg['2074']
+
+    acq_price_eur_1 = round(convert_fn(22, "USD", "EUR", date(2019, 1, 15)), 2)
+    acq_price_eur_2 = round(convert_fn(19, "USD", "EUR", date(2019, 7, 15)), 2)
+    sell_price_eur = round(convert_fn(sell_price, "USD", "EUR", date(2021, 8, 2)), 2)
+    assert report_2074[0]['sold_stock_units_515'] == 200
+    assert report_2074[0]['sell_price_514'] == sell_price_eur
+    assert report_2074[1]['sold_stock_units_515'] == 100
+    assert report_2074[1]['sell_price_514'] == sell_price_eur
+    expected_capital_gain = round(
+        200 * (round(sell_price_eur, 2) - round(acq_price_eur_1, 2)) +
+        100 * (round(sell_price_eur, 2) - round(acq_price_eur_2, 2)), 2
+    )
+    assert report_2042C["capital_gain_3VG"] == expected_capital_gain, \
+        "Capital gain tax should be compliant"
 
 
 def test_stockoptions_sale(stock_helper_with_plan, convert_fn):
@@ -154,52 +164,52 @@ def test_stockoptions_sale(stock_helper_with_plan, convert_fn):
 
 
 def test_reset_all(stock_helper_with_plan):
-    # CAKE=240 ; BUD=500 ; PZZA=150
+    # CAKE=240 ; BUD=200 ; PZZA=150
     stock_helper_with_plan.sell_rsus("CAKE", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     stock_helper_with_plan.sell_espp("BUD", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     stock_helper_with_plan.reset()
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 200
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
     assert len(stock_helper_with_plan.stock_sales[2021]) == 0
 
 
 def test_reset_by_stocktype(stock_helper_with_plan):
-    # CAKE=240 ; BUD=500 ; PZZA=150
+    # CAKE=240 ; BUD=200 ; PZZA=150
     stock_helper_with_plan.sell_rsus("CAKE", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     stock_helper_with_plan.sell_espp("BUD", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 450
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 150
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
     stock_helper_with_plan.reset(stock_types=["espp"])
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 200
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
     stock_helper_with_plan.reset(stock_types=["stockoption"])
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 200
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
     stock_helper_with_plan.reset(stock_types=["rsu"])
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 200
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
 
 
 def test_reset_by_symbol(stock_helper_with_plan):
-    # CAKE=240 ; BUD=500 ; PZZA=150
+    # CAKE=240 ; BUD=200 ; PZZA=150
     stock_helper_with_plan.sell_rsus("CAKE", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     stock_helper_with_plan.sell_espp("BUD", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 450
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 150
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
     stock_helper_with_plan.reset(symbols=["CAKE", "PZZA"])
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 450
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 150
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
     stock_helper_with_plan.reset(symbols=["BUD"])
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 500
+    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 200
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
