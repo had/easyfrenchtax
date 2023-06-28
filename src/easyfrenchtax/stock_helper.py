@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Optional
+
 from dateutil.relativedelta import relativedelta
 from currency_converter import CurrencyConverter
 from collections import defaultdict
@@ -35,11 +37,10 @@ class SaleEvent:
     unit_acquisition_price: float # in Euros
     sell_date: date
     sell_price_eur: float
-    sell_details: list[dict[str, any]]  # TODO typing of details
     selling_fees: float
-    # plan_name: str
-    # owner: int
-    # acq_date: date
+    owner: Optional[int] = None
+    plan_name: Optional[str] = None
+    acq_date: Optional[date] = None
 
 
 
@@ -201,7 +202,6 @@ class StockHelper:
                           currency: str = "EUR"):
         if nb_stocks == 0:
             return
-        sell_details = []
         sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date=sell_date), 2)
         to_sell = nb_stocks
         stocks_before_sell_date = [r for r in self.stock_options[symbol] if r.acq_date < sell_date]
@@ -211,31 +211,24 @@ class StockHelper:
             sell_from_acq = min(to_sell, acq.available)
             strike_price_eur = acq.acq_price_eur if acq.acq_price_eur else cc.convert(acq.acq_price, currency, "EUR",
                                                                                       date=sell_date)
-            sell_details.append({
-                "owner": acq.owner,
-                "plan_name": acq.plan_name,
-                "count": sell_from_acq,
-                "strike_price_eur": strike_price_eur,
-                "acq_date": acq.acq_date
-            })
-            # update the rsu data with new availability (tuples are immutable, so replace with new one)
+            self.stock_sales[sell_date.year].append(SaleEvent(
+                symbol=symbol,
+                stock_type="stockoption",
+                nb_stocks_sold=sell_from_acq,
+                unit_acquisition_price=strike_price_eur,  # re-using this field to store the strike price
+                sell_date=sell_date,
+                sell_price_eur=sell_price_eur,
+                selling_fees=round(cc.convert(fees, currency, "EUR", date=sell_date), 2),
+                owner=acq.owner
+            ))
+            # update the stock options data with new availability
             self.stock_options[symbol][i].available = acq.available - sell_from_acq
             to_sell -= sell_from_acq
             if to_sell == 0:
                 break
         if to_sell > 0:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
-        self.stock_sales[sell_date.year].append(SaleEvent(
-            symbol=symbol,
-            stock_type="stockoption",
-            nb_stocks_sold=nb_stocks - to_sell,
-            unit_acquisition_price=None,  # not applicable for stock options when doing "exercise and sell"
-            sell_date=sell_date,
-            sell_price_eur=sell_price_eur,
-            sell_details=sell_details,
-            selling_fees=round(cc.convert(fees, currency, "EUR", date=sell_date), 2)
-        ))
-        return ((nb_stocks - to_sell), None, sell_details)
+        return nb_stocks - to_sell
 
     def sell_espp(self, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
                   currency: str = "EUR"):
@@ -257,12 +250,6 @@ class StockHelper:
                 unit_acquisition_price=round(acq.acq_price_eur, 2),
                 sell_date=sell_date,
                 sell_price_eur=sell_price_eur,
-                sell_details=[{
-                    "plan_name": acq.plan_name,
-                    "count": sell_from_acq,
-                    "acq_price": acq.acq_price,  # keep price in original currency here
-                    "acq_date": acq.acq_date
-                }],
                 selling_fees=0  # not sure how to handle this
             ))
             if to_sell == 0:
@@ -297,14 +284,10 @@ class StockHelper:
                 unit_acquisition_price=round(acq.acq_price_eur, 2),
                 sell_date=sell_date,
                 sell_price_eur=sell_price_eur,
-                sell_details=[{
-                    "plan_name": acq.plan_name,
-                    "count": sell_from_acq,
-                    "acq_price": acq.acq_price,  # keep price in original currency here
-                    "acq_price_currency": "TODO",  # TODO
-                    "acq_date": acq.acq_date
-                }],
-                selling_fees=0  # not sure how to handle this
+                selling_fees=0,  # not sure how to handle this
+                owner=None,
+                plan_name=acq.plan_name,
+                acq_date=acq.acq_date
             ))
             # update the rsu data with new availability (tuples are immutable, so replace with new one)
             self.rsus[symbol][i].available = acq.available - sell_from_acq
@@ -331,43 +314,42 @@ class StockHelper:
             if sale.stock_type == "stockoption":
                 # exercise gain only applies to Stock Options
                 # /!\ only stock options attributed after 28/09/2012 are supported
-                for sale_detail in sale.sell_details:
-                    exercise_gain_eur = sale_detail["count"] * (sale.sell_price_eur - sale_detail["strike_price_eur"])
-                    if sale_detail["owner"] == 1:
-                        other_taxable_gain_1 += exercise_gain_eur
-                    elif sale_detail["owner"] == 2:
-                        other_taxable_gain_2 += exercise_gain_eur
-                    else:
-                        raise Exception(
-                            f"Owner must be 1 or 2, not {sale_detail['owner']} (type={type(sale_detail['owner'])}")
+
+                # Note: strike price is stored in unit_acquisition_price
+                exercise_gain_eur = sale.nb_stocks_sold * (sale.sell_price_eur - sale.unit_acquisition_price)
+                if sale.owner == 1:
+                    other_taxable_gain_1 += exercise_gain_eur
+                elif sale.owner == 2:
+                    other_taxable_gain_2 += exercise_gain_eur
+                else:
+                    raise Exception(
+                        f"Owner must be 1 or 2, not {sale.owner} (type={type(sale.owner)}")
             elif sale.stock_type == "rsu":
                 # acquisition gain only applies to RSU
                 sell_date = sale.sell_date
                 sell_date_minus_2y = sell_date + relativedelta(years=-2)
                 sell_date_minus_8y = sell_date + relativedelta(years=-8)
-                for sale_detail in sale.sell_details:
-                    rsu_plan = self.rsu_plans[sale_detail["plan_name"]]
-                    taxation_scheme = rsu_plan.taxation_scheme
-                    plan_currency = rsu_plan.currency
-                    acq_date = sale_detail["acq_date"]
-                    gain_eur = sale_detail["count"] * sale.unit_acquisition_price
-                    # gain tax
-                    if taxation_scheme == "2015" or taxation_scheme == "2017":
-                        # 50% rebates btw 2 and 8y retention, 65% above 8y
-                        if acq_date <= sell_date_minus_8y:
-                            taxable_gain += gain_eur * 0.35
-                            rebates += gain_eur * 0.65
-                        elif acq_date <= sell_date_minus_2y:
-                            taxable_gain += gain_eur * 0.5
-                            rebates += gain_eur * 0.5
-                        else:
-                            taxable_gain += gain_eur  # too recent to have a rebate
-                    elif taxation_scheme == "2018":
-                        # 50% rebate
+                rsu_plan = self.rsu_plans[sale.plan_name]
+                taxation_scheme = rsu_plan.taxation_scheme
+                acq_date = sale.acq_date
+                gain_eur = sale.nb_stocks_sold * sale.unit_acquisition_price
+                # gain tax
+                if taxation_scheme == "2015" or taxation_scheme == "2017":
+                    # 50% rebates btw 2 and 8y retention, 65% above 8y
+                    if acq_date <= sell_date_minus_8y:
+                        taxable_gain += gain_eur * 0.35
+                        rebates += gain_eur * 0.65
+                    elif acq_date <= sell_date_minus_2y:
                         taxable_gain += gain_eur * 0.5
-                        rebates_50p += gain_eur * 0.5
+                        rebates += gain_eur * 0.5
                     else:
-                        raise Exception(f"Unsupported tax scheme: {taxation_scheme}")
+                        taxable_gain += gain_eur  # too recent to have a rebate
+                elif taxation_scheme == "2018":
+                    # 50% rebate
+                    taxable_gain += gain_eur * 0.5
+                    rebates_50p += gain_eur * 0.5
+                else:
+                    raise Exception(f"Unsupported tax scheme: {taxation_scheme}")
 
         return {
             "taxable_acquisition_gain_1TZ": round(taxable_gain),

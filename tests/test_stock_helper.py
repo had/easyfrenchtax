@@ -171,7 +171,7 @@ def test_espp_sale(convert_fn):
 
 def test_stockoptions_sale(stock_helper_with_plan, convert_fn):
     sell_price = 40
-    final_count, _, sell = stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021, 8, 2), sell_price=sell_price,
+    final_count = stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021, 8, 2), sell_price=sell_price,
                                                                     fees=0, currency="USD")
     agt = stock_helper_with_plan.compute_acquisition_gain_tax(2021)
     cgt = stock_helper_with_plan.compute_capital_gain_tax(2021)
