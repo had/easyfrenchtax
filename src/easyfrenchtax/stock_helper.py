@@ -32,11 +32,15 @@ class SaleEvent:
     symbol: str
     stock_type: str  # TODO change to enum
     nb_stocks_sold: int
-    unit_acquisition_price: float
+    unit_acquisition_price: float # in Euros
     sell_date: date
     sell_price_eur: float
     sell_details: list[dict[str, any]]  # TODO typing of details
     selling_fees: float
+    # plan_name: str
+    # owner: int
+    # acq_date: date
+
 
 
 # currency converter (USD/EUR in particular)
@@ -237,7 +241,6 @@ class StockHelper:
                   currency: str = "EUR"):
         if nb_stocks == 0:
             return
-        sell_details = []
         sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date=sell_date), 2)
         to_sell = nb_stocks
         stocks_before_sell_date = [r for r in self.espp_stocks[symbol] if r.acq_date < sell_date]
@@ -273,7 +276,6 @@ class StockHelper:
                   currency: str = "EUR") -> int:
         if nb_stocks == 0:
             return 0
-        sell_details = []
         sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date=sell_date), 2)
         to_sell = nb_stocks
 
@@ -311,16 +313,6 @@ class StockHelper:
                 break
         if to_sell > 0:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
-        # self.stock_sales[sell_date.year].append(SaleEvent(
-        #     symbol=symbol,
-        #     stock_type="rsu",
-        #     nb_stocks_sold=nb_stocks - to_sell,
-        #     unit_acquisition_price=-1,
-        #     sell_date=sell_date,
-        #     sell_price_eur=sell_price_eur,
-        #     sell_details=sell_details,
-        #     selling_fees=round(cc.convert(fees, currency, "EUR", date=sell_date), 2)
-        # ))
         return (nb_stocks - to_sell)
 
     ####### tax computation functions #######
@@ -358,9 +350,7 @@ class StockHelper:
                     taxation_scheme = rsu_plan.taxation_scheme
                     plan_currency = rsu_plan.currency
                     acq_date = sale_detail["acq_date"]
-                    usd_eur = cc.convert(1, plan_currency, "EUR",
-                                         date=acq_date)
-                    gain_eur = sale_detail["count"] * sale_detail["acq_price"] * usd_eur
+                    gain_eur = sale_detail["count"] * sale.unit_acquisition_price
                     # gain tax
                     if taxation_scheme == "2015" or taxation_scheme == "2017":
                         # 50% rebates btw 2 and 8y retention, 65% above 8y

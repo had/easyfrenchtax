@@ -19,6 +19,7 @@ def stock_helper_with_plan():
     stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2018, 12, 28), 19)
     stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2019, 1, 28), 23)
     stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2019, 2, 28), 24)
+    stock_helper.rsu_vesting(1, "CAKE", "Cake1", 100, date(2020, 2, 28), 24)
     stock_helper.rsu_plan("Pineapple", date(2016, 6, 29), "PZZA", "USD")
     stock_helper.rsu_vesting(1, "PZZA", "Pineapple", 313, date(2020, 12, 28), 20.84)
     stock_helper.rsu_vesting(1, "PZZA", "Pineapple", 312, date(2021, 3, 28), 27.44)
@@ -42,7 +43,7 @@ def test_summary(stock_helper_with_plan):
     summary = stock_helper_with_plan.summary()
     assert set(summary.keys()) == {"CAKE", "BUD", "PZZA"}
     assert set(summary["CAKE"].keys()) == {"RSU"}
-    assert summary["CAKE"]["RSU"] == 320
+    assert summary["CAKE"]["RSU"] == 420
     assert set(summary["BUD"].keys()) == {"ESPP"}
     assert summary["BUD"]["ESPP"] == 500
     assert set(summary["PZZA"].keys()) == {"StockOption", "RSU"}
@@ -50,22 +51,46 @@ def test_summary(stock_helper_with_plan):
 
 
 def test_rsu_sale(stock_helper_with_plan):
-    assert sum([r.available for r in stock_helper_with_plan.rsus["CAKE"]]) == 320
     final_count_1 = stock_helper_with_plan.sell_rsus("CAKE", 200, date(2019, 6, 3), sell_price=22, fees=0,
                                                      currency="USD")
     assert final_count_1 == 200
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 40
-    assert all([r.available == 10 for r in stock_helper_with_plan.rsus["CAKE"][1:]])
+    assert all([r.available == 10 or r.acq_date > date(2019, 6, 3) for r in stock_helper_with_plan.rsus["CAKE"][1:]])
     final_count_2 = stock_helper_with_plan.sell_rsus("CAKE", 200, date(2019, 6, 3), sell_price=22, fees=0,
                                                      currency="USD")
     assert final_count_2 == 120, "Cannot sell more than we have"
+
+def test_rsu_sell_available(stock_helper_with_plan):
+    # check that we only consider RSUs available at the sale date, not afterwards
+    # on 1-4-2021, only 313+312+398+133 are available
+    available_before = 313+312+398+133
+    available_after = 313
+
+    amount_sold = stock_helper_with_plan.sell_rsus("PZZA", available_before + available_after, date(2021, 4, 1), sell_price=22, fees=0)
+    assert amount_sold == available_before
+    amount_sold_2 = stock_helper_with_plan.sell_rsus("PZZA", available_after, date(2021, 12, 1), sell_price=22, fees=0)
+    assert amount_sold_2 == available_after
+
+def test_rsu_fifo(stock_helper_with_plan):
+    stock_helper_with_plan.sell_rsus("PZZA", 800, date(2022,1,1), sell_price=22, fees=0)
+    vestings = sorted(stock_helper_with_plan.rsus["PZZA"],key=lambda sg: sg.acq_date)
+    assert vestings[0].available == 0
+    assert vestings[0].count == 398
+    assert vestings[1].available == 0
+    assert vestings[1].count == 313
+    assert vestings[2].available == 44
+    assert vestings[2].count == 133
+    assert vestings[3].available == 312
+    assert vestings[3].count == 312
+    assert vestings[4].available == 313
+    assert vestings[4].count == 313
 
 
 def test_rsu_acquisition_gain_tax(stock_helper_with_plan):
     stock_helper_with_plan.sell_rsus("CAKE", 200, date(2019, 1, 16),
                                      sell_price=22, fees=0, currency="USD")
     taxes = stock_helper_with_plan.compute_acquisition_gain_tax(2019)
-    assert taxes["taxable_acquisition_gain_1TZ"] == 3431
+    assert taxes["taxable_acquisition_gain_1TZ"] == 3432
     assert taxes["acquisition_gain_50p_rebates_1WZ"] == 0
     assert taxes["acquisition_gain_rebates_1UZ"] == 0
     assert taxes["exercise_gain_1_1TT"] == 0
