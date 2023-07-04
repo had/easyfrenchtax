@@ -11,7 +11,6 @@ import glob
 
 @dataclass
 class StockGroup:
-    owner: int  # taxpayer 1 or 2, typically, for tax statements
     count: int
     available: int
     acq_price: float
@@ -121,12 +120,11 @@ class StockHelper:
                 currency=currency
             )
 
-    def rsu_vesting(self, owner: int, symbol: str, plan_name: str, count: int, acq_date: date, acq_price: float,
+    def rsu_vesting(self, symbol: str, plan_name: str, count: int, acq_date: date, acq_price: float,
                     currency: str = None) -> None:
         if not currency:
             currency = self.rsu_plans[plan_name].currency
         self.rsus[symbol].append(StockGroup(
-            owner=owner,
             count=count,
             available=count,  # new acquisition, so everything available
             acq_price=acq_price,
@@ -136,9 +134,8 @@ class StockHelper:
         ))
         self.rsus[symbol].sort(key=lambda a: a.acq_date)
 
-    def add_espp(self, owner: int, symbol: str, count: int, acq_date: date, acq_price: float, currency: str) -> None:
+    def add_espp(self, symbol: str, count: int, acq_date: date, acq_price: float, currency: str) -> None:
         self.espp_stocks[symbol].append(StockGroup(
-            owner=owner,
             count=count,
             available=count,  # new acquisition, so everything available
             acq_price=acq_price,
@@ -148,10 +145,9 @@ class StockHelper:
         ))
         self.espp_stocks[symbol].sort(key=lambda a: a.acq_date)
 
-    def add_stockoptions(self, owner: int, symbol: str, plan_name: str, count: int, vesting_date: date,
+    def add_stockoptions(self, symbol: str, plan_name: str, count: int, vesting_date: date,
                          strike_price: float, currency: str) -> None:
         self.stock_options[symbol].append(StockGroup(
-            owner=owner,
             count=count,
             available=count,  # new acquisition, so everything available
             acq_price=strike_price if currency != "EUR" else None,  # only set one of the two acquisition prices...
@@ -177,8 +173,6 @@ class StockHelper:
             with open(tsv_name) as tsv_file:
                 tsv_data = csv.DictReader(tsv_file, delimiter="\t")
                 for row in tsv_data:
-                    owner = int(row["Owner"])
-                    assert (owner == 1 or owner == 2)
                     plan_name = row["Plan name"]
                     stock_type = row["Stock type"]
                     currency = row["Currency"]
@@ -190,15 +184,15 @@ class StockHelper:
                         if plan_name not in self.rsu_plans:
                             plan_date = parse_date(row["Plan date"])
                             self.rsu_plan(plan_name, plan_date, symbol, currency)
-                        self.rsu_vesting(owner, symbol, plan_name, acq_count, acq_date, acq_price, currency)
+                        self.rsu_vesting(symbol, plan_name, acq_count, acq_date, acq_price, currency)
                     elif stock_type == "ESPP":
-                        self.add_espp(owner, symbol, acq_count, acq_date, acq_price, currency)
+                        self.add_espp(symbol, acq_count, acq_date, acq_price, currency)
                     elif stock_type == "StockOption":
-                        self.add_stockoptions(owner, symbol, plan_name, acq_count, acq_date, acq_price, currency)
+                        self.add_stockoptions(symbol, plan_name, acq_count, acq_date, acq_price, currency)
 
     ####### stock selling related load functions #######
 
-    def sell_stockoptions(self, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
+    def sell_stockoptions(self, owner: int, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
                           currency: str = "EUR"):
         if nb_stocks == 0:
             return
@@ -219,7 +213,7 @@ class StockHelper:
                 sell_date=sell_date,
                 sell_price_eur=sell_price_eur,
                 selling_fees=round(cc.convert(fees, currency, "EUR", date=sell_date), 2),
-                owner=acq.owner
+                owner=owner
             ))
             # update the stock options data with new availability
             self.stock_options[symbol][i].available = acq.available - sell_from_acq

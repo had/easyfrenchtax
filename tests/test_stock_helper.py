@@ -10,26 +10,26 @@ from currency_converter import CurrencyConverter
 def stock_helper_with_plan():
     stock_helper = StockHelper()
     stock_helper.rsu_plan("Cake1", date(2016, 6, 28), "CAKE", "USD")
-    stock_helper.rsu_vesting(1, "CAKE", "Cake1", 240, date(2018, 6, 29), 20)
-    stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2018, 7, 30), 18)
-    stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2018, 8, 28), 19)
-    stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2018, 9, 28), 14)
-    stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2018, 10, 29), 15)
-    stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2018, 11, 28), 14)
-    stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2018, 12, 28), 19)
-    stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2019, 1, 28), 23)
-    stock_helper.rsu_vesting(1, "CAKE", "Cake1", 10, date(2019, 2, 28), 24)
-    stock_helper.rsu_vesting(1, "CAKE", "Cake1", 100, date(2020, 2, 28), 24)
+    stock_helper.rsu_vesting("CAKE", "Cake1", 240, date(2018, 6, 29), 20)
+    stock_helper.rsu_vesting("CAKE", "Cake1", 10, date(2018, 7, 30), 18)
+    stock_helper.rsu_vesting("CAKE", "Cake1", 10, date(2018, 8, 28), 19)
+    stock_helper.rsu_vesting("CAKE", "Cake1", 10, date(2018, 9, 28), 14)
+    stock_helper.rsu_vesting("CAKE", "Cake1", 10, date(2018, 10, 29), 15)
+    stock_helper.rsu_vesting("CAKE", "Cake1", 10, date(2018, 11, 28), 14)
+    stock_helper.rsu_vesting("CAKE", "Cake1", 10, date(2018, 12, 28), 19)
+    stock_helper.rsu_vesting("CAKE", "Cake1", 10, date(2019, 1, 28), 23)
+    stock_helper.rsu_vesting("CAKE", "Cake1", 10, date(2019, 2, 28), 24)
+    stock_helper.rsu_vesting("CAKE", "Cake1", 100, date(2020, 2, 28), 24)
     stock_helper.rsu_plan("Pineapple", date(2016, 6, 29), "PZZA", "USD")
-    stock_helper.rsu_vesting(1, "PZZA", "Pineapple", 313, date(2020, 12, 28), 20.84)
-    stock_helper.rsu_vesting(1, "PZZA", "Pineapple", 312, date(2021, 3, 28), 27.44)
-    stock_helper.rsu_vesting(1, "PZZA", "Pineapple", 313, date(2021, 6, 28), 37.25)
+    stock_helper.rsu_vesting("PZZA", "Pineapple", 313, date(2020, 12, 28), 20.84)
+    stock_helper.rsu_vesting("PZZA", "Pineapple", 312, date(2021, 3, 28), 27.44)
+    stock_helper.rsu_vesting("PZZA", "Pineapple", 313, date(2021, 6, 28), 37.25)
     stock_helper.rsu_plan("Pepperoni", date(2017, 7, 28), "PZZA", "USD")
-    stock_helper.rsu_vesting(1, "PZZA", "Pepperoni", 398, date(2020, 12, 16), 18.75)
-    stock_helper.rsu_vesting(1, "PZZA", "Pepperoni", 133, date(2021, 1, 26), 19.13)
-    stock_helper.add_espp(1, "BUD", 200, date(2019, 1, 15), 22, "USD")
-    stock_helper.add_espp(1, "BUD", 300, date(2019, 7, 15), 19, "USD")
-    stock_helper.add_stockoptions(1, "PZZA", "SO", 150, date(2018, 1, 15), 5, "USD")
+    stock_helper.rsu_vesting("PZZA", "Pepperoni", 398, date(2020, 12, 16), 18.75)
+    stock_helper.rsu_vesting("PZZA", "Pepperoni", 133, date(2021, 1, 26), 19.13)
+    stock_helper.add_espp("BUD", 200, date(2019, 1, 15), 22, "USD")
+    stock_helper.add_espp("BUD", 300, date(2019, 7, 15), 19, "USD")
+    stock_helper.add_stockoptions("PZZA", "SO", 150, date(2018, 1, 15), 5, "USD")
     return stock_helper
 
 
@@ -141,8 +141,8 @@ def test_rsu_example(stock_helper_with_plan):
 
 def test_espp_sale(convert_fn):
     stock_helper = StockHelper()
-    stock_helper.add_espp(1, "BUD", 200, date(2019, 1, 15), 22, "USD")
-    stock_helper.add_espp(1, "BUD", 300, date(2019, 7, 15), 19, "USD")
+    stock_helper.add_espp("BUD", 200, date(2019, 1, 15), 22, "USD")
+    stock_helper.add_espp("BUD", 300, date(2019, 7, 15), 19, "USD")
     sell_price = 28
     final_count = stock_helper.sell_espp("BUD", 300, date(2021, 8, 2), sell_price=sell_price, fees=0, currency="USD")
     assert final_count == 300
@@ -171,7 +171,7 @@ def test_espp_sale(convert_fn):
 
 def test_stockoptions_sale(stock_helper_with_plan, convert_fn):
     sell_price = 40
-    final_count = stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021, 8, 2), sell_price=sell_price,
+    final_count = stock_helper_with_plan.sell_stockoptions(1, "PZZA", 50, date(2021, 8, 2), sell_price=sell_price,
                                                                     fees=0, currency="USD")
     agt = stock_helper_with_plan.compute_acquisition_gain_tax(2021)
     cgt = stock_helper_with_plan.compute_capital_gain_tax(2021)
@@ -192,7 +192,7 @@ def test_reset_all(stock_helper_with_plan):
     # CAKE=240 ; BUD=200 ; PZZA=150
     stock_helper_with_plan.sell_rsus("CAKE", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     stock_helper_with_plan.sell_espp("BUD", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
-    stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
+    stock_helper_with_plan.sell_stockoptions(1, "PZZA", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     stock_helper_with_plan.reset()
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
     assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 200
@@ -204,7 +204,7 @@ def test_reset_by_stocktype(stock_helper_with_plan):
     # CAKE=240 ; BUD=200 ; PZZA=150
     stock_helper_with_plan.sell_rsus("CAKE", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     stock_helper_with_plan.sell_espp("BUD", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
-    stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
+    stock_helper_with_plan.sell_stockoptions(1, "PZZA", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
     assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 150
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
@@ -226,7 +226,7 @@ def test_reset_by_symbol(stock_helper_with_plan):
     # CAKE=240 ; BUD=200 ; PZZA=150
     stock_helper_with_plan.sell_rsus("CAKE", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     stock_helper_with_plan.sell_espp("BUD", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
-    stock_helper_with_plan.sell_stockoptions("PZZA", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
+    stock_helper_with_plan.sell_stockoptions(1, "PZZA", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
     assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 150
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
