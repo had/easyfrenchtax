@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import date, datetime
+from enum import Enum
 from typing import Optional
 
 from dateutil.relativedelta import relativedelta
@@ -7,6 +8,13 @@ from currency_converter import CurrencyConverter
 from collections import defaultdict
 import csv
 import glob
+
+class RsuTaxScheme(Enum):
+    NONQUALIFIED_RSU = 1
+    QUALIFIED_RSU = 2
+    MACRON_1_RSU = 3
+    MACRON_2_RSU = 4
+    MACRON_3_RSU = 5
 
 
 @dataclass
@@ -23,7 +31,7 @@ class StockGroup:
 class RsuPlan:
     name: str
     approval_date: date
-    taxation_scheme: str
+    taxation_scheme: RsuTaxScheme
     stock_symbol: str
     currency: str
 
@@ -40,8 +48,6 @@ class SaleEvent:
     owner: Optional[int] = None
     plan_name: Optional[str] = None
     acq_date: Optional[date] = None
-
-
 
 # currency converter (USD/EUR in particular)
 cc = CurrencyConverter(fallback_on_wrong_date=True, fallback_on_missing_rate=True)
@@ -95,17 +101,17 @@ class StockHelper:
 
     # ----- RSU related load functions ------
     @staticmethod
-    def _determine_rsu_plans_type(approval_date: date) -> str:
+    def _determine_rsu_plans_type(approval_date: date) -> RsuTaxScheme:
         if approval_date <= date(2012, 9, 27):
-            return "2007"  # TODO replace with an enum
+            return RsuTaxScheme.NONQUALIFIED_RSU
         elif approval_date <= date(2015, 8, 8):
-            return "2012"
+            return RsuTaxScheme.QUALIFIED_RSU
         elif approval_date <= date(2017, 1, 1):
-            return "2015"
+            return RsuTaxScheme.MACRON_1_RSU
         elif approval_date <= date(2018, 1, 1):
-            return "2017"
+            return RsuTaxScheme.MACRON_2_RSU
         else:
-            return "2018"
+            return RsuTaxScheme.MACRON_3_RSU
 
     ## IMPORTANT! approval_date here is used to determine the taxation scheme
     # (Macron I, Macron II, etc.) so it needs to be the date where the plan was
@@ -328,7 +334,7 @@ class StockHelper:
                 acq_date = sale.acq_date
                 gain_eur = sale.nb_stocks_sold * sale.unit_acquisition_price
                 # gain tax
-                if taxation_scheme == "2015" or taxation_scheme == "2017":
+                if taxation_scheme in (RsuTaxScheme.MACRON_1_RSU, RsuTaxScheme.MACRON_2_RSU):
                     # 50% rebates btw 2 and 8y retention, 65% above 8y
                     if acq_date <= sell_date_minus_8y:
                         taxable_gain += gain_eur * 0.35
@@ -338,7 +344,7 @@ class StockHelper:
                         rebates += gain_eur * 0.5
                     else:
                         taxable_gain += gain_eur  # too recent to have a rebate
-                elif taxation_scheme == "2018":
+                elif taxation_scheme == RsuTaxScheme.MACRON_3_RSU:
                     # 50% rebate
                     taxable_gain += gain_eur * 0.5
                     rebates_50p += gain_eur * 0.5
