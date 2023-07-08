@@ -16,6 +16,10 @@ class RsuTaxScheme(Enum):
     MACRON_2_RSU = 4
     MACRON_3_RSU = 5
 
+class StockType(Enum):
+    RSU = 1
+    ESPP = 2
+    STOCKOPTIONS = 3
 
 @dataclass
 class StockGroup:
@@ -39,14 +43,14 @@ class RsuPlan:
 @dataclass
 class SaleEvent:
     symbol: str
-    stock_type: str  # TODO change to enum
+    stock_type: StockType
     nb_stocks_sold: int
     unit_acquisition_price: float # in Euros
     sell_date: date
     sell_price_eur: float
     selling_fees: float
     owner: Optional[int] = None
-    plan_name: Optional[str] = None
+    rsu_tax_scheme: Optional[RsuTaxScheme] = None
     acq_date: Optional[date] = None
 
 # currency converter (USD/EUR in particular)
@@ -67,14 +71,15 @@ class StockHelper:
         self.stock_sales = defaultdict(list)
 
     # TODO: this seems unused, consider removing
-    def reset(self, stock_types: list[str] = ("espp", "stockoption", "rsu"), symbols: list[str] = None) -> None:
+    def reset(self, stock_types: list[StockType] = (StockType.RSU, StockType.ESPP, StockType.STOCKOPTIONS),
+              symbols: list[str] = None) -> None:
         for sales in self.stock_sales.values():
             sales[:] = [s for s in sales if
                         (symbols and s.symbol not in symbols) or (s.stock_type not in stock_types)]
         stock_types_mapping = {
-            "espp": self.espp_stocks,
-            "stockoption": self.stock_options,
-            "rsu": self.rsus
+            StockType.ESPP: self.espp_stocks,
+            StockType.STOCKOPTIONS: self.stock_options,
+            StockType.RSU: self.rsus
         }
         for stock_type in [stock_types_mapping[st] for st in stock_types]:
             if not symbols:
@@ -213,7 +218,7 @@ class StockHelper:
                                                                                       date=sell_date)
             self.stock_sales[sell_date.year].append(SaleEvent(
                 symbol=symbol,
-                stock_type="stockoption",
+                stock_type=StockType.STOCKOPTIONS,
                 nb_stocks_sold=sell_from_acq,
                 unit_acquisition_price=strike_price_eur,  # re-using this field to store the strike price
                 sell_date=sell_date,
@@ -245,7 +250,7 @@ class StockHelper:
             to_sell -= sell_from_acq
             self.stock_sales[sell_date.year].append(SaleEvent(
                 symbol=symbol,
-                stock_type="espp",
+                stock_type=StockType.ESPP,
                 nb_stocks_sold=sell_from_acq,
                 unit_acquisition_price=round(acq.acq_price_eur, 2),
                 sell_date=sell_date,
@@ -277,18 +282,28 @@ class StockHelper:
             if acq.available == 0:
                 continue
             sell_from_acq = min(to_sell, acq.available)
-            self.stock_sales[sell_date.year].append(SaleEvent(
+            tax_scheme = self.rsu_plans[acq.plan_name].taxation_scheme
+            self.sell_rsus_2(
                 symbol=symbol,
-                stock_type="rsu",
                 nb_stocks_sold=sell_from_acq,
+                acq_date=acq.acq_date,
                 unit_acquisition_price=round(acq.acq_price_eur, 2),
-                sell_date=sell_date,
+                sell_date = sell_date,
                 sell_price_eur=sell_price_eur,
-                selling_fees=0,  # not sure how to handle this
-                owner=None,
-                plan_name=acq.plan_name,
-                acq_date=acq.acq_date
-            ))
+                tax_scheme=tax_scheme
+            )
+            # self.stock_sales[sell_date.year].append(SaleEvent(
+            #     symbol=symbol,
+            #     stock_type="rsu",
+            #     nb_stocks_sold=sell_from_acq,
+            #     unit_acquisition_price=round(acq.acq_price_eur, 2),
+            #     sell_date=sell_date,
+            #     sell_price_eur=sell_price_eur,
+            #     selling_fees=0,  # not sure how to handle this
+            #     owner=None,
+            #     plan_name=acq.plan_name,
+            #     acq_date=acq.acq_date
+            # ))
             # update the rsu data with new availability (tuples are immutable, so replace with new one)
             self.rsus[symbol][i].available = acq.available - sell_from_acq
             to_sell -= sell_from_acq
@@ -298,6 +313,20 @@ class StockHelper:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
         return (nb_stocks - to_sell)
 
+    def sell_rsus_2(self, symbol: str, nb_stocks_sold: int, acq_date: date, unit_acquisition_price: float,
+                sell_date: date, sell_price_eur: float, tax_scheme: RsuTaxScheme):
+        self.stock_sales[sell_date.year].append(SaleEvent(
+            symbol=symbol,
+            stock_type=StockType.RSU,
+            nb_stocks_sold=nb_stocks_sold,
+            unit_acquisition_price=unit_acquisition_price,
+            sell_date=sell_date,
+            sell_price_eur=sell_price_eur,
+            selling_fees=0,
+            owner=None,
+            rsu_tax_scheme=tax_scheme,
+            acq_date=acq_date
+        ))
     ####### tax computation functions #######
 
     # the bible of acquisition and capital gain tax (version 2021):
@@ -311,7 +340,7 @@ class StockHelper:
         other_taxable_gain_2 = 0  # this would contribute to box 1UT
 
         for sale in sell_events:
-            if sale.stock_type == "stockoption":
+            if sale.stock_type == StockType.STOCKOPTIONS:
                 # exercise gain only applies to Stock Options
                 # /!\ only stock options attributed after 28/09/2012 are supported
 
@@ -324,13 +353,12 @@ class StockHelper:
                 else:
                     raise Exception(
                         f"Owner must be 1 or 2, not {sale.owner} (type={type(sale.owner)}")
-            elif sale.stock_type == "rsu":
+            elif sale.stock_type == StockType.RSU:
                 # acquisition gain only applies to RSU
                 sell_date = sale.sell_date
                 sell_date_minus_2y = sell_date + relativedelta(years=-2)
                 sell_date_minus_8y = sell_date + relativedelta(years=-8)
-                rsu_plan = self.rsu_plans[sale.plan_name]
-                taxation_scheme = rsu_plan.taxation_scheme
+                taxation_scheme = sale.rsu_tax_scheme
                 acq_date = sale.acq_date
                 gain_eur = sale.nb_stocks_sold * sale.unit_acquisition_price
                 # gain tax
@@ -369,7 +397,7 @@ class StockHelper:
         sell_events = self.stock_sales[year]
         total_capital_gain = 0
         for sale in sell_events:
-            if sale.stock_type == "stockoption":
+            if sale.stock_type == StockType.STOCKOPTIONS:
                 # stock option is "exercise and sold" immediately so there is no capital gain
                 continue
             sell_event_report = {}
