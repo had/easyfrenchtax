@@ -204,9 +204,9 @@ class StockHelper:
     ####### stock selling related load functions #######
 
     def sell_stockoptions(self, owner: int, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
-                          currency: str = "EUR"):
+                          currency: str = "EUR") -> int:
         if nb_stocks == 0:
-            return
+            return 0
         sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date=sell_date), 2)
         to_sell = nb_stocks
         stocks_before_sell_date = [r for r in self.stock_options[symbol] if r.acq_date < sell_date]
@@ -216,16 +216,14 @@ class StockHelper:
             sell_from_acq = min(to_sell, acq.available)
             strike_price_eur = acq.acq_price_eur if acq.acq_price_eur else cc.convert(acq.acq_price, currency, "EUR",
                                                                                       date=sell_date)
-            self.stock_sales[sell_date.year].append(SaleEvent(
+            self.sell_stockoptions_2(
                 symbol=symbol,
-                stock_type=StockType.STOCKOPTIONS,
                 nb_stocks_sold=sell_from_acq,
                 unit_acquisition_price=strike_price_eur,  # re-using this field to store the strike price
                 sell_date=sell_date,
                 sell_price_eur=sell_price_eur,
-                selling_fees=round(cc.convert(fees, currency, "EUR", date=sell_date), 2),
                 owner=owner
-            ))
+            )
             # update the stock options data with new availability
             self.stock_options[symbol][i].available = acq.available - sell_from_acq
             to_sell -= sell_from_acq
@@ -235,10 +233,22 @@ class StockHelper:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
         return nb_stocks - to_sell
 
+    def sell_stockoptions_2(self, symbol: str, nb_stocks_sold: int, unit_acquisition_price: float,
+                sell_date: date, sell_price_eur: float, owner: int):
+        self.stock_sales[sell_date.year].append(SaleEvent(
+            symbol=symbol,
+            stock_type=StockType.STOCKOPTIONS,
+            nb_stocks_sold=nb_stocks_sold,
+            unit_acquisition_price=round(unit_acquisition_price, 2),
+            sell_date=sell_date,
+            sell_price_eur=sell_price_eur,
+            selling_fees=0,
+            owner=owner,
+        ))
     def sell_espp(self, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
-                  currency: str = "EUR"):
+                  currency: str = "EUR") -> int:
         if nb_stocks == 0:
-            return
+            return 0
         sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date=sell_date), 2)
         to_sell = nb_stocks
         stocks_before_sell_date = [r for r in self.espp_stocks[symbol] if r.acq_date < sell_date]
@@ -248,21 +258,31 @@ class StockHelper:
             sell_from_acq = min(to_sell, acq.available)
             self.espp_stocks[symbol][i].available = acq.available - sell_from_acq
             to_sell -= sell_from_acq
-            self.stock_sales[sell_date.year].append(SaleEvent(
+            self.sell_espp_2(
                 symbol=symbol,
-                stock_type=StockType.ESPP,
                 nb_stocks_sold=sell_from_acq,
-                unit_acquisition_price=round(acq.acq_price_eur, 2),
+                unit_acquisition_price=acq.acq_price_eur,
                 sell_date=sell_date,
-                sell_price_eur=sell_price_eur,
-                selling_fees=0  # not sure how to handle this
-            ))
+                sell_price_eur=sell_price_eur
+            )
             if to_sell == 0:
                 break
         if to_sell > 0:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have")
-            return (0, 0, [])
-        return (nb_stocks - to_sell)
+        return nb_stocks - to_sell
+
+    def sell_espp_2(self, symbol: str, nb_stocks_sold: int, unit_acquisition_price: float,
+                sell_date: date, sell_price_eur: float):
+        self.stock_sales[sell_date.year].append(SaleEvent(
+            symbol=symbol,
+            stock_type=StockType.ESPP,
+            nb_stocks_sold=nb_stocks_sold,
+            unit_acquisition_price=round(unit_acquisition_price, 2),
+            sell_date=sell_date,
+            sell_price_eur=sell_price_eur,
+            selling_fees=0,
+        ))
+
 
     def sell_rsus(self, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
                   currency: str = "EUR") -> int:
@@ -287,23 +307,11 @@ class StockHelper:
                 symbol=symbol,
                 nb_stocks_sold=sell_from_acq,
                 acq_date=acq.acq_date,
-                unit_acquisition_price=round(acq.acq_price_eur, 2),
+                unit_acquisition_price=acq.acq_price_eur,
                 sell_date = sell_date,
                 sell_price_eur=sell_price_eur,
                 tax_scheme=tax_scheme
             )
-            # self.stock_sales[sell_date.year].append(SaleEvent(
-            #     symbol=symbol,
-            #     stock_type="rsu",
-            #     nb_stocks_sold=sell_from_acq,
-            #     unit_acquisition_price=round(acq.acq_price_eur, 2),
-            #     sell_date=sell_date,
-            #     sell_price_eur=sell_price_eur,
-            #     selling_fees=0,  # not sure how to handle this
-            #     owner=None,
-            #     plan_name=acq.plan_name,
-            #     acq_date=acq.acq_date
-            # ))
             # update the rsu data with new availability (tuples are immutable, so replace with new one)
             self.rsus[symbol][i].available = acq.available - sell_from_acq
             to_sell -= sell_from_acq
@@ -319,7 +327,7 @@ class StockHelper:
             symbol=symbol,
             stock_type=StockType.RSU,
             nb_stocks_sold=nb_stocks_sold,
-            unit_acquisition_price=unit_acquisition_price,
+            unit_acquisition_price=round(unit_acquisition_price, 2),
             sell_date=sell_date,
             sell_price_eur=sell_price_eur,
             selling_fees=0,
@@ -327,6 +335,8 @@ class StockHelper:
             rsu_tax_scheme=tax_scheme,
             acq_date=acq_date
         ))
+
+
     ####### tax computation functions #######
 
     # the bible of acquisition and capital gain tax (version 2021):
