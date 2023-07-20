@@ -240,3 +240,33 @@ def test_reset_by_symbol(stock_helper_with_plan):
     assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
     assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 200
     assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
+
+def test_estimate_tax_rsu_acquisition_gain():
+    agi = {
+        "acquisition_gain_rebates_1UZ": 16000,
+        "acquisition_gain_50p_rebates_1WZ": 32000,
+        "taxable_acquisition_gain_1TZ": 8000
+    }
+    stock_helper = StockHelper()
+    marginal_rate = 0.15
+    income_tax, social_tax = stock_helper.estimate_tax(agi, {}, marginal_rate)
+    assert income_tax == 8000 * marginal_rate
+    assert social_tax == (32000+16000+8000) * (0.097+0.075)  # CSG / CRDS / Solidarité
+
+def test_estimate_tax_capital_gain():
+    cgi = {"2042C" : {"capital_gain_3VG": 1000}}
+    stock_helper = StockHelper()
+    income_tax, social_tax = stock_helper.estimate_tax({}, cgi, 0)
+    assert income_tax == 1000 * 0.128
+    assert social_tax == 1000 * (0.097+0.075)  # CSG / CRDS / Solidarité
+
+def test_estimate_stock_options_exercise():
+    agi = {
+        "exercise_gain_1_1TT": 16000,
+        "exercise_gain_2_1UT": 32000,
+    }
+    stock_helper = StockHelper()
+    marginal_rate = 0.15
+    income_tax, social_tax = stock_helper.estimate_tax(agi, {}, marginal_rate)
+    assert income_tax == (16000 + 32000) * 0.9 * marginal_rate
+    assert social_tax == (16000 + 32000) * (0.097 + 0.1)  # CSG / CRDS / 10% Salary contribution

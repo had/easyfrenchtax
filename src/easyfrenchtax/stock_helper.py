@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 
 from dateutil.relativedelta import relativedelta
 from currency_converter import CurrencyConverter
@@ -10,11 +10,11 @@ import csv
 import glob
 
 class RsuTaxScheme(Enum):
-    NONQUALIFIED_RSU = 1
-    QUALIFIED_RSU = 2
-    MACRON_1_RSU = 3
-    MACRON_2_RSU = 4
-    MACRON_3_RSU = 5
+    NONQUALIFIED_RSU = "Non-qualified RSU"
+    QUALIFIED_RSU = "Qualified RSU"
+    MACRON_1_RSU = "Macron I"
+    MACRON_2_RSU = "Macron II"
+    MACRON_3_RSU = "Macron III"
 
 class StockType(Enum):
     RSU = 1
@@ -434,6 +434,28 @@ class StockHelper:
         else:
             tax_report["2042C"]["capital_loss_3VH"] = -total_capital_gain
         return tax_report
+
+    def estimate_tax(self, acquisition_gain_info, capital_gain_info, marginal_tax_rate) -> Tuple[int, int]:
+        exercise_gain_1_1TT = acquisition_gain_info.get("exercise_gain_1_1TT", 0)
+        exercise_gain_2_1UT = acquisition_gain_info.get("exercise_gain_2_1UT", 0)
+        acquisition_gain_rebates_1UZ = acquisition_gain_info.get("acquisition_gain_rebates_1UZ", 0)
+        acquisition_gain_50p_rebates_1WZ = acquisition_gain_info.get("acquisition_gain_50p_rebates_1WZ", 0)
+        taxable_acquisition_gain_1TZ = acquisition_gain_info.get("taxable_acquisition_gain_1TZ", 0)
+        capital_gain_3VG = capital_gain_info.get("2042C", {}).get("capital_gain_3VG", 0)
+
+        taxable_income = (exercise_gain_1_1TT + exercise_gain_2_1UT) * 0.9 + taxable_acquisition_gain_1TZ
+        csgcrds_base = taxable_acquisition_gain_1TZ + acquisition_gain_rebates_1UZ + acquisition_gain_50p_rebates_1WZ + capital_gain_3VG
+        activity_income_crds_base = exercise_gain_1_1TT + exercise_gain_2_1UT
+        salary_contrib_10p_base = exercise_gain_1_1TT + exercise_gain_2_1UT
+
+        incremental_income_tax = round(taxable_income * marginal_tax_rate)
+        incremental_capital_tax = round(capital_gain_3VG * 0.128)
+        incremental_social_tax = round(
+            (csgcrds_base + activity_income_crds_base) * 0.097 +
+            csgcrds_base * 0.075 +
+            salary_contrib_10p_base * 0.1
+        )
+        return incremental_income_tax + incremental_capital_tax, incremental_social_tax
 
     @staticmethod
     def helper_capital_gain_tax(tax_report):
