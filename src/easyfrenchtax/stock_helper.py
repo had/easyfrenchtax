@@ -9,7 +9,7 @@ from collections import defaultdict
 import csv
 import glob
 
-class RsuTaxScheme(Enum):
+class RsuTaxScheme(str, Enum):
     NONQUALIFIED_RSU = "Non-qualified RSU"
     QUALIFIED_RSU = "Qualified RSU"
     MACRON_1_RSU = "Macron I"
