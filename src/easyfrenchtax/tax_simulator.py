@@ -95,7 +95,7 @@ class TaxField(Enum):
 # Lots of parameters evolve year after year (inflation, political decisions, etc.)
 # This dictionary gathers all variable parameters.
 TaxParameters = namedtuple("TaxParameters", [
-    # Source: https://www.economie.gouv.fr/particuliers/quotient-familial
+    # Source: https://www.service-public.fr/particuliers/vosdroits/F2705
     "family_quotient_benefices_capping",
     # https://www.service-public.fr/particuliers/vosdroits/F1419
     "slices_thresholds", "slices_rates",
@@ -125,7 +125,13 @@ year_tax_parameters: dict[int, TaxParameters] = {
         fees_10p_deduction_ceiling=13522,
         fees_10p_deduction_floor=472
     ),
-
+    2024: TaxParameters(
+        family_quotient_benefices_capping=1759,
+        slices_thresholds=[11294, 28797, 82341, 177106],
+        slices_rates=[0.11, 0.30, 0.41, 0.45],
+        fees_10p_deduction_ceiling=14171,
+        fees_10p_deduction_floor=495
+    ),
 }
 
 
