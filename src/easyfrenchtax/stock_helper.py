@@ -411,6 +411,7 @@ class StockHelper:
                 # stock option is "exercise and sold" immediately so there is no capital gain
                 continue
             sell_event_report = {}
+            sell_event_report["title_name_511"] = sale.symbol + " " + sale.stock_type.name
             sell_event_report["selling_date_512"] = sale.sell_date
             sell_event_report["sell_price_514"] = sale.sell_price_eur
             sell_event_report["sold_stock_units_515"] = sale.nb_stocks_sold
