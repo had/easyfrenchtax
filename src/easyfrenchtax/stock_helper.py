@@ -203,8 +203,8 @@ class StockHelper:
 
     ####### stock selling related load functions #######
 
-    def sell_stockoptions(self, owner: int, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
-                          currency: str = "EUR") -> int:
+    def sell_stockoptions_legacy(self, owner: int, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
+                                 currency: str = "EUR") -> int:
         if nb_stocks == 0:
             return 0
         sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date=sell_date), 2)
@@ -216,7 +216,7 @@ class StockHelper:
             sell_from_acq = min(to_sell, acq.available)
             strike_price_eur = acq.acq_price_eur if acq.acq_price_eur else cc.convert(acq.acq_price, currency, "EUR",
                                                                                       date=sell_date)
-            self.sell_stockoptions_2(
+            self.sell_stockoptions(
                 symbol=symbol,
                 nb_stocks_sold=sell_from_acq,
                 unit_acquisition_price=strike_price_eur,  # re-using this field to store the strike price
@@ -233,8 +233,8 @@ class StockHelper:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
         return nb_stocks - to_sell
 
-    def sell_stockoptions_2(self, symbol: str, nb_stocks_sold: int, unit_acquisition_price: float,
-                sell_date: date, sell_price_eur: float, owner: int):
+    def sell_stockoptions(self, symbol: str, nb_stocks_sold: int, unit_acquisition_price: float,
+                          sell_date: date, sell_price_eur: float, owner: int):
         self.stock_sales[sell_date.year].append(SaleEvent(
             symbol=symbol,
             stock_type=StockType.STOCKOPTIONS,
@@ -245,8 +245,8 @@ class StockHelper:
             selling_fees=0,
             owner=owner,
         ))
-    def sell_espp(self, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
-                  currency: str = "EUR") -> int:
+    def sell_espp_legacy(self, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
+                         currency: str = "EUR") -> int:
         if nb_stocks == 0:
             return 0
         sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date=sell_date), 2)
@@ -258,7 +258,7 @@ class StockHelper:
             sell_from_acq = min(to_sell, acq.available)
             self.espp_stocks[symbol][i].available = acq.available - sell_from_acq
             to_sell -= sell_from_acq
-            self.sell_espp_2(
+            self.sell_espp(
                 symbol=symbol,
                 nb_stocks_sold=sell_from_acq,
                 unit_acquisition_price=acq.acq_price_eur,
@@ -271,8 +271,8 @@ class StockHelper:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have")
         return nb_stocks - to_sell
 
-    def sell_espp_2(self, symbol: str, nb_stocks_sold: int, unit_acquisition_price: float,
-                sell_date: date, sell_price_eur: float):
+    def sell_espp(self, symbol: str, nb_stocks_sold: int, unit_acquisition_price: float,
+                  sell_date: date, sell_price_eur: float):
         self.stock_sales[sell_date.year].append(SaleEvent(
             symbol=symbol,
             stock_type=StockType.ESPP,
@@ -284,8 +284,8 @@ class StockHelper:
         ))
 
 
-    def sell_rsus(self, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
-                  currency: str = "EUR") -> int:
+    def sell_rsus_legacy(self, symbol: str, nb_stocks: int, sell_date: date, sell_price: float, fees: float,
+                         currency: str = "EUR") -> int:
         if nb_stocks == 0:
             return 0
         sell_price_eur = round(cc.convert(sell_price, currency, "EUR", date=sell_date), 2)
@@ -303,7 +303,7 @@ class StockHelper:
                 continue
             sell_from_acq = min(to_sell, acq.available)
             tax_scheme = self.rsu_plans[acq.plan_name].taxation_scheme
-            self.sell_rsus_2(
+            self.sell_rsus(
                 symbol=symbol,
                 nb_stocks_sold=sell_from_acq,
                 acq_date=acq.acq_date,
@@ -321,8 +321,8 @@ class StockHelper:
             print(f"WARNING: You are trying to sell more stocks ({nb_stocks}) than you have ({to_sell})")
         return (nb_stocks - to_sell)
 
-    def sell_rsus_2(self, symbol: str, nb_stocks_sold: int, acq_date: date, unit_acquisition_price: float,
-                sell_date: date, sell_price_eur: float, tax_scheme: RsuTaxScheme):
+    def sell_rsus(self, symbol: str, nb_stocks_sold: int, acq_date: date, unit_acquisition_price: float,
+                  sell_date: date, sell_price_eur: float, tax_scheme: RsuTaxScheme):
         self.stock_sales[sell_date.year].append(SaleEvent(
             symbol=symbol,
             stock_type=StockType.RSU,
