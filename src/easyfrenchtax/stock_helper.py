@@ -70,39 +70,6 @@ class StockHelper:
         self.stock_options = defaultdict(list)
         self.stock_sales = defaultdict(list)
 
-    # TODO: this seems unused, consider removing
-    def reset(self, stock_types: list[StockType] = (StockType.RSU, StockType.ESPP, StockType.STOCKOPTIONS),
-              symbols: list[str] = None) -> None:
-        for sales in self.stock_sales.values():
-            sales[:] = [s for s in sales if
-                        (symbols and s.symbol not in symbols) or (s.stock_type not in stock_types)]
-        stock_types_mapping = {
-            StockType.ESPP: self.espp_stocks,
-            StockType.STOCKOPTIONS: self.stock_options,
-            StockType.RSU: self.rsus
-        }
-        for stock_type in [stock_types_mapping[st] for st in stock_types]:
-            if not symbols:
-                stocks_subset = stock_type.values()
-            else:
-                stocks_subset = [stock_type[symbol] for symbol in symbols]
-            for stocks in stocks_subset:
-                for i, s in enumerate(stocks):
-                    stocks[i].available = s.count
-
-    # TODO: this seems unused, consider removing
-    def summary(self) -> dict[str, dict[str, int]]:
-        summary = defaultdict(lambda: defaultdict(int))
-        for symbol, rsus in self.rsus.items():
-            for rsu in rsus:
-                summary[symbol]["RSU"] += rsu.count
-        for symbol, espps in self.espp_stocks.items():
-            for espp in espps:
-                summary[symbol]["ESPP"] += espp.count
-        for symbol, stockoptions in self.stock_options.items():
-            for stockoption in stockoptions:
-                summary[symbol]["StockOption"] += stockoption.count
-        return summary
 
     # ----- RSU related load functions ------
     @staticmethod

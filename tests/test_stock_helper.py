@@ -41,17 +41,6 @@ def convert_fn() -> Callable[[float, str, str, date], float]:
     return cc.convert
 
 
-def test_summary(stock_helper_with_plan):
-    summary = stock_helper_with_plan.summary()
-    assert set(summary.keys()) == {"CAKE", "BUD", "PZZA"}
-    assert set(summary["CAKE"].keys()) == {"RSU"}
-    assert summary["CAKE"]["RSU"] == 420
-    assert set(summary["BUD"].keys()) == {"ESPP"}
-    assert summary["BUD"]["ESPP"] == 500
-    assert set(summary["PZZA"].keys()) == {"StockOption", "RSU"}
-    assert summary["PZZA"]["StockOption"] == 150
-
-
 def test_rsu_sale(stock_helper_with_plan):
     final_count_1 = stock_helper_with_plan.sell_rsus_legacy("CAKE", 200, date(2019, 6, 3), sell_price=22, fees=0,
                                                             currency="USD")
@@ -189,57 +178,6 @@ def test_stockoptions_sale(stock_helper_with_plan, convert_fn):
     assert len(cgt["2074"]) == 0, \
         "Stock options 'exercise and sell' should not yield capital gain (thus no capital gain tax)"
 
-
-def test_reset_all(stock_helper_with_plan):
-    # CAKE=240 ; BUD=200 ; PZZA=150
-    stock_helper_with_plan.sell_rsus_legacy("CAKE", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
-    stock_helper_with_plan.sell_espp_legacy("BUD", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
-    stock_helper_with_plan.sell_stockoptions_legacy(1, "PZZA", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
-    stock_helper_with_plan.reset()
-    assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 200
-    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
-    assert len(stock_helper_with_plan.stock_sales[2021]) == 0
-
-
-def test_reset_by_stocktype(stock_helper_with_plan):
-    # CAKE=240 ; BUD=200 ; PZZA=150
-    stock_helper_with_plan.sell_rsus_legacy("CAKE", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
-    stock_helper_with_plan.sell_espp_legacy("BUD", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
-    stock_helper_with_plan.sell_stockoptions_legacy(1, "PZZA", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
-    assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 150
-    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
-    stock_helper_with_plan.reset(stock_types=[StockType.ESPP])
-    assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 200
-    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
-    stock_helper_with_plan.reset(stock_types=[StockType.STOCKOPTIONS])
-    assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 200
-    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
-    stock_helper_with_plan.reset(stock_types=[StockType.RSU])
-    assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 200
-    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
-
-
-def test_reset_by_symbol(stock_helper_with_plan):
-    # CAKE=240 ; BUD=200 ; PZZA=150
-    stock_helper_with_plan.sell_rsus_legacy("CAKE", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
-    stock_helper_with_plan.sell_espp_legacy("BUD", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
-    stock_helper_with_plan.sell_stockoptions_legacy(1, "PZZA", 50, date(2021, 8, 2), sell_price=123, fees=0, currency="USD")
-    assert stock_helper_with_plan.rsus["CAKE"][0].available == 190
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 150
-    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 100
-    stock_helper_with_plan.reset(symbols=["CAKE", "PZZA"])
-    assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 150
-    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
-    stock_helper_with_plan.reset(symbols=["BUD"])
-    assert stock_helper_with_plan.rsus["CAKE"][0].available == 240
-    assert stock_helper_with_plan.espp_stocks["BUD"][0].available == 200
-    assert stock_helper_with_plan.stock_options["PZZA"][0].available == 150
 
 def test_estimate_tax_rsu_acquisition_gain():
     agi = {
