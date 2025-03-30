@@ -132,6 +132,13 @@ year_tax_parameters: dict[int, TaxParameters] = {
         fees_10p_deduction_ceiling=14171,
         fees_10p_deduction_floor=495
     ),
+    2025: TaxParameters(
+        family_quotient_benefices_capping=1791,
+        slices_thresholds=[11497, 29315, 83823, 180294], # https://www.service-public.fr/particuliers/vosdroits/F1419
+        slices_rates=[0.11, 0.30, 0.41, 0.45],
+        fees_10p_deduction_ceiling=14426, # https://www.service-public.fr/particuliers/vosdroits/F1989
+        fees_10p_deduction_floor=504
+    ),
 }
 
 
